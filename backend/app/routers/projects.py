@@ -1,14 +1,26 @@
-"""backend/app/routers/projects.py — 项目管理 API"""
+"""backend/app/routers/projects.py — 项目管理 API
+
+端点: POST/GET /projects, GET/PUT/DELETE /projects/{id}
+"""
 from __future__ import annotations
 
 import uuid
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from loguru import logger
 
 from app.database import get_db
-from app.models.schemas import ProjectCreate, ProjectOut
+from app.models.schemas import ProjectCreate, ProjectUpdate, ProjectOut
+from app.utils.exceptions import NotFoundException
 
 router = APIRouter(tags=["projects"])
+
+
+def _row_to_project(r) -> ProjectOut:
+    return ProjectOut(
+        id=r["id"], name=r["name"], repoUrl=r["repo_url"] or None,
+        description=r["description"] or None,
+        createdAt=r["created_at"], updatedAt=r["updated_at"],
+    )
 
 
 @router.post("/projects", response_model=ProjectOut)
@@ -18,17 +30,14 @@ async def create_project(body: ProjectCreate):
     try:
         project_id = str(uuid.uuid4())
         await db.execute(
-            "INSERT INTO projects (id, name, description) VALUES (?, ?, ?)",
-            (project_id, body.name, body.description),
+            "INSERT INTO projects (id, name, repo_url, description) VALUES (?, ?, ?, ?)",
+            (project_id, body.name, body.repo_url or "", body.description or ""),
         )
         await db.commit()
         cursor = await db.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
         row = await cursor.fetchone()
         logger.info(f"创建项目: {body.name} (id={project_id})")
-        return ProjectOut(id=row["id"], name=row["name"], description=row["description"], createdAt=row["created_at"])
-    except Exception as e:
-        logger.error(f"创建项目失败: {e}")
-        raise HTTPException(status_code=500, detail="创建项目失败")
+        return _row_to_project(row)
     finally:
         await db.close()
 
@@ -40,12 +49,71 @@ async def list_projects():
     try:
         cursor = await db.execute("SELECT * FROM projects ORDER BY created_at DESC")
         rows = await cursor.fetchall()
-        return [
-            ProjectOut(id=r["id"], name=r["name"], description=r["description"], createdAt=r["created_at"])
-            for r in rows
-        ]
-    except Exception as e:
-        logger.error(f"获取项目列表失败: {e}")
-        raise HTTPException(status_code=500, detail="获取项目列表失败")
+        return [_row_to_project(r) for r in rows]
+    finally:
+        await db.close()
+
+
+@router.get("/projects/{project_id}", response_model=ProjectOut)
+async def get_project(project_id: str):
+    """获取项目详情"""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+        row = await cursor.fetchone()
+        if not row:
+            raise NotFoundException(f"未找到 ID 为 {project_id} 的项目")
+        return _row_to_project(row)
+    finally:
+        await db.close()
+
+
+@router.put("/projects/{project_id}", response_model=ProjectOut)
+async def update_project(project_id: str, body: ProjectUpdate):
+    """更新项目"""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT id FROM projects WHERE id = ?", (project_id,))
+        if not await cursor.fetchone():
+            raise NotFoundException(f"未找到 ID 为 {project_id} 的项目")
+
+        updates, params = [], []
+        if body.name is not None:
+            updates.append("name = ?")
+            params.append(body.name)
+        if body.repo_url is not None:
+            updates.append("repo_url = ?")
+            params.append(body.repo_url)
+        if body.description is not None:
+            updates.append("description = ?")
+            params.append(body.description)
+
+        if updates:
+            updates.append("updated_at = datetime('now')")
+            params.append(project_id)
+            await db.execute(f"UPDATE projects SET {', '.join(updates)} WHERE id = ?", params)
+            await db.commit()
+
+        cursor = await db.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+        row = await cursor.fetchone()
+        logger.info(f"更新项目: {project_id}")
+        return _row_to_project(row)
+    finally:
+        await db.close()
+
+
+@router.delete("/projects/{project_id}")
+async def delete_project(project_id: str):
+    """删除项目"""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT id FROM projects WHERE id = ?", (project_id,))
+        if not await cursor.fetchone():
+            raise NotFoundException(f"未找到 ID 为 {project_id} 的项目")
+
+        await db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        await db.commit()
+        logger.info(f"删除项目: {project_id}")
+        return {"ok": True}
     finally:
         await db.close()

@@ -25,16 +25,19 @@ async def init_db() -> None:
             CREATE TABLE IF NOT EXISTS projects (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
+                repo_url TEXT DEFAULT '',
                 description TEXT DEFAULT '',
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
             CREATE TABLE IF NOT EXISTS features (
                 id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL,
-                name TEXT NOT NULL,
+                title TEXT NOT NULL,
                 description TEXT DEFAULT '',
-                status TEXT NOT NULL DEFAULT 'active',
+                source TEXT DEFAULT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 FOREIGN KEY (project_id) REFERENCES projects(id)
             );
@@ -43,10 +46,11 @@ async def init_db() -> None:
                 id TEXT PRIMARY KEY,
                 feature_id TEXT NOT NULL,
                 title TEXT NOT NULL,
-                steps TEXT DEFAULT '[]',
-                expected TEXT DEFAULT '',
+                steps TEXT DEFAULT '',
+                expected_result TEXT DEFAULT '',
                 priority TEXT NOT NULL DEFAULT 'medium',
-                status TEXT NOT NULL DEFAULT 'active',
+                case_type TEXT NOT NULL DEFAULT 'manual',
+                midscene_script TEXT DEFAULT NULL,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now')),
                 FOREIGN KEY (feature_id) REFERENCES features(id)
@@ -59,7 +63,7 @@ async def init_db() -> None:
                 total INTEGER NOT NULL DEFAULT 0,
                 passed INTEGER NOT NULL DEFAULT 0,
                 failed INTEGER NOT NULL DEFAULT 0,
-                skipped INTEGER NOT NULL DEFAULT 0,
+                env_url TEXT DEFAULT NULL,
                 started_at TEXT,
                 finished_at TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -72,6 +76,7 @@ async def init_db() -> None:
                 case_id TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pending',
                 error_message TEXT DEFAULT '',
+                screenshot_url TEXT DEFAULT NULL,
                 duration_ms INTEGER DEFAULT 0,
                 FOREIGN KEY (run_id) REFERENCES runs(id),
                 FOREIGN KEY (case_id) REFERENCES cases(id)
