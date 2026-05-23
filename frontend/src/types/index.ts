@@ -2,92 +2,80 @@
 export interface Project {
   id: number
   name: string
-  description: string
-  status: 'active' | 'archived'
+  repoUrl: string | null
+  description: string | null
   createdAt: string
   updatedAt: string
 }
 
+export type ProjectCreate = Pick<Project, 'name' | 'description'> & { repoUrl?: string }
+
 // 功能点
+export type FeatureStatus = 'pending' | 'partial' | 'covered'
+
 export interface Feature {
   id: number
   projectId: number
-  name: string
-  description: string
-  status: 'pending' | 'in_progress' | 'done'
-  priority: 'P0' | 'P1' | 'P2' | 'P3'
+  title: string
+  description: string | null
+  source: string | null
+  status: FeatureStatus
+  caseCount: number
   createdAt: string
-  updatedAt: string
-}
-
-// 测试用例步骤
-export interface TestStep {
-  id: number
-  order: number
-  action: string
-  expected: string
 }
 
 // 测试用例
+export type CasePriority = 'high' | 'medium' | 'low'
+export type CaseType = 'manual' | 'e2e'
+
 export interface TestCase {
   id: number
   featureId: number
   title: string
-  precondition: string
-  steps: TestStep[]
-  priority: 'P0' | 'P1' | 'P2' | 'P3'
-  status: 'draft' | 'ready' | 'obsolete'
+  steps: string | null
+  expectedResult: string | null
+  priority: CasePriority
+  caseType: CaseType
+  midsceneScript: string | null
   createdAt: string
   updatedAt: string
 }
 
 // 执行记录
-export interface Execution {
+export type RunStatus = 'pending' | 'running' | 'passed' | 'failed' | 'error'
+
+export interface TestRun {
   id: number
   projectId: number
-  triggerType: 'manual' | 'scheduled'
-  status: 'pending' | 'running' | 'passed' | 'failed' | 'error'
-  totalCases: number
-  passedCases: number
-  failedCases: number
-  startedAt: string
+  status: RunStatus
+  total: number
+  passed: number
+  failed: number
+  startedAt: string | null
   finishedAt: string | null
   createdAt: string
 }
 
-// 执行结果详情
-export interface ExecutionResult {
+// 执行结果
+export interface RunResult {
   id: number
-  executionId: number
-  testCaseId: string
-  testCaseTitle: string
-  status: 'passed' | 'failed' | 'error' | 'skipped'
-  duration: number
+  runId: number
+  caseId: number
+  status: RunStatus
   errorMessage: string | null
+  screenshotUrl: string | null
+  durationMs: number | null
 }
 
-// 报告统计
-export interface ReportStats {
-  totalFeatures: number
-  coveredFeatures: number
-  coverageRate: number
-  totalCases: number
-  passedCases: number
-  failedCases: number
-  passRate: number
+// 报告看板
+export interface DashboardData {
+  coverage: { projectId: number; totalFeatures: number; coveredFeatures: number; coverageRate: number }
+  passRate: { projectId: number; totalRuns: number; passedRuns: number; passRate: number }
+  trend: TrendPoint[]
 }
 
-// 趋势数据
 export interface TrendPoint {
   date: string
   passRate: number
-  coverageRate: number
-}
-
-// 通用分页响应
-export interface PaginatedResponse<T> {
-  items: T[]
-  total: number
-  page: number
-  pageSize: number
+  totalCases: number
 }
