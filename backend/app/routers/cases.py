@@ -10,7 +10,7 @@ from loguru import logger
 
 from app.database import get_db
 from app.models.schemas import CaseCreate, CaseUpdate, CaseOut
-from app.utils.exceptions import NotFoundException
+from app.utils.exceptions import NotFoundException, ConflictException
 
 router = APIRouter(tags=["cases"])
 
@@ -34,6 +34,14 @@ async def create_case(body: CaseCreate):
         if not await cursor.fetchone():
             raise NotFoundException("功能点不存在")
 
+        # TC-033: 功能点内用例标题唯一性检查
+        cursor = await db.execute(
+            "SELECT id FROM cases WHERE feature_id = ? AND title = ?",
+            (body.feature_id, body.title),
+        )
+        if await cursor.fetchone():
+            raise ConflictException("该功能点下用例标题已存在")
+
         case_id = str(uuid.uuid4())
         await db.execute(
             """INSERT INTO cases (id, feature_id, title, steps, expected_result, priority, case_type, midscene_script)
@@ -46,6 +54,39 @@ async def create_case(body: CaseCreate):
         row = await cursor.fetchone()
         logger.info(f"创建测试用例: {body.title}")
         return _row_to_case(row)
+    finally:
+        await db.close()
+
+
+@router.post("/cases/batch", response_model=list[CaseOut])
+async def create_cases_batch(body: list[CaseCreate]):
+    """TC-034/035: 批量创建测试用例"""
+    db = await get_db()
+    try:
+        results = []
+        for item in body:
+            cursor = await db.execute("SELECT id FROM features WHERE id = ?", (item.feature_id,))
+            if not await cursor.fetchone():
+                raise NotFoundException(f"功能点不存在: {item.feature_id}")
+            cursor = await db.execute(
+                "SELECT id FROM cases WHERE feature_id = ? AND title = ?",
+                (item.feature_id, item.title),
+            )
+            if await cursor.fetchone():
+                raise ConflictException(f"该功能点下用例标题已存在: {item.title}")
+
+            case_id = str(uuid.uuid4())
+            await db.execute(
+                """INSERT INTO cases (id, feature_id, title, steps, expected_result, priority, case_type, midscene_script)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (case_id, item.feature_id, item.title, item.steps,
+                 item.expected_result, item.priority.value, item.case_type.value, item.midscene_script),
+            )
+            cursor = await db.execute("SELECT * FROM cases WHERE id = ?", (case_id,))
+            results.append(_row_to_case(await cursor.fetchone()))
+        await db.commit()
+        logger.info(f"批量创建测试用例: {len(results)} 条")
+        return results
     finally:
         await db.close()
 
