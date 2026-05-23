@@ -5,8 +5,8 @@
 | 属性 | 值 |
 |------|-----|
 | 路由 | `/projects` |
-| 文件路径 | `src/views/projects/ProjectList.vue` |
-| 权限 | 登录用户 |
+| 文件路径 | `src/views/ProjectListView.vue` |
+| 权限 | 登录用户（V1 无认证） |
 | 导航位置 | 左侧菜单第 1 项，图标 `ProjectOutlined` |
 
 ## 页面布局
@@ -20,8 +20,8 @@
 │ ┌─────────┐  ┌─────────┐  ┌─────────┐             │
 │ │ 项目名称 │  │ 项目名称 │  │ 项目名称 │             │
 │ │ 描述...  │  │ 描述...  │  │ 描述...  │             │
-│ │ GitHub   │  │ GitHub   │  │ GitHub   │             │
-│ │ 统计信息 │  │ 统计信息 │  │ 统计信息 │             │
+│ │ 仓库地址 │  │ 仓库地址 │  │ 仓库地址 │             │
+│ │ 创建时间 │  │ 创建时间 │  │ 创建时间 │             │
 │ └─────────┘  └─────────┘  └─────────┘             │
 ├─────────────────────────────────────────────────────┤
 │ 分页器                                               │
@@ -34,10 +34,10 @@
 |------|-----------------|----------|------|
 | 页面容器 | `a-card` | — | 包裹整个页面内容 |
 | 创建按钮 | `a-button type="primary"` | — | 打开创建项目弹窗 |
-| 搜索框 | `a-input-search` | 本地状态 | 按项目名称模糊搜索 |
+| 搜索框 | `a-input-search` | 本地状态 | 按项目名称前端过滤 |
 | 项目卡片 | `a-card` | API: GET /api/projects | 展示单个项目信息 |
 | 卡片网格 | `a-row` + `a-col` | — | span=8，响应式 xs=24 sm=12 lg=8 |
-| 分页器 | `a-pagination` | API 返回 total | 默认 pageSize=12 |
+| 分页器 | `a-pagination` | 前端分页 | 默认 pageSize=12 |
 | 创建/编辑弹窗 | `a-modal` + `a-form` | 本地状态 | 表单提交后刷新列表 |
 
 ## 交互行为
@@ -45,12 +45,11 @@
 | 用户操作 | 触发事件 | 页面响应 |
 |----------|----------|----------|
 | 点击「创建项目」 | 打开 Modal | 显示创建项目表单弹窗 |
-| 填写表单并提交 | POST /api/projects | 关闭弹窗，刷新列表，显示成功提示 |
-| 输入搜索关键词 | GET /api/projects?keyword=xxx | 列表按关键词过滤，防抖 300ms |
+| 填写表单并提交 | POST /api/projects | 关闭弹窗，刷新列表，`message.success` 提示 |
+| 输入搜索关键词 | 前端过滤 | 卡片列表按名称过滤，防抖 300ms |
 | 点击项目卡片 | 路由跳转 | 进入该项目的功能点管理页面 `/projects/:id/features` |
 | 点击卡片上「编辑」图标 | 打开 Modal | 显示编辑项目表单弹窗，回填数据 |
-| 点击卡片上「删除」图标 | 弹出确认框 | 确认后 DELETE /api/projects/:id，刷新列表 |
-| 切换分页 | GET /api/projects?page=x | 列表更新为对应页数据 |
+| 点击卡片上「删除」图标 | `Modal.confirm` | 确认后 DELETE /api/projects/:id，刷新列表 |
 
 ## 状态覆盖
 
@@ -65,16 +64,15 @@
 
 | 字段 | 类型 | 组件 | 校验规则 | 说明 |
 |------|------|------|----------|------|
-| 项目名称 | string | `a-input` | 必填，2-50 字符 | — |
-| 项目描述 | string | `a-textarea` | 可选，最多 200 字符 | — |
-| GitHub 仓库 | string | `a-input` | 可选，URL 格式 | 格式：owner/repo |
-| GitHub Token | string | `a-input-password` | 关联仓库时必填 | 用于 API 调用 |
+| name | string | `a-input` | 必填，1-100 字符 | 项目名称 |
+| description | string | `a-textarea` | 可选 | 项目描述 |
+| repoUrl | string | `a-input` | 可选，URL 格式 | GitHub 仓库地址 |
 
 ## 调用的后端 API
 
 | API | 方法 | 触发时机 | 用途 |
 |-----|------|----------|------|
-| `/api/projects` | GET | 页面加载、搜索、翻页 | 获取项目列表 |
+| `/api/projects` | GET | 页面加载 | 获取项目列表 |
 | `/api/projects` | POST | 提交创建表单 | 创建新项目 |
-| `/api/projects/:id` | PUT | 提交编辑表单 | 更新项目信息 |
-| `/api/projects/:id` | DELETE | 确认删除 | 删除项目 |
+| `/api/projects/{id}` | PUT | 提交编辑表单 | 更新项目信息 |
+| `/api/projects/{id}` | DELETE | 确认删除 | 删除项目 |
