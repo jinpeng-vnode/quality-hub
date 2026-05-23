@@ -7,7 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from app.database import init_db
-from app.routers import projects, features, cases, runs, dashboard
+from app.routers import projects, features, cases, runs, reports
+from app.utils.exceptions import register_exception_handlers
 
 
 @asynccontextmanager
@@ -20,6 +21,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Quality Hub API", version="0.1.0", lifespan=lifespan)
+
+# 注册统一异常处理
+register_exception_handlers(app)
 
 # CORS 配置
 app.add_middleware(
@@ -35,7 +39,7 @@ app.include_router(projects.router, prefix="/api")
 app.include_router(features.router, prefix="/api")
 app.include_router(cases.router, prefix="/api")
 app.include_router(runs.router, prefix="/api")
-app.include_router(dashboard.router, prefix="/api")
+app.include_router(reports.router, prefix="/api")
 
 
 @app.get("/health")

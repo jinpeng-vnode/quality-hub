@@ -1,14 +1,29 @@
-"""backend/app/routers/features.py — 功能点管理 API"""
+"""backend/app/routers/features.py — 功能点管理 API
+
+端点: POST/GET /features, GET/PUT/DELETE /features/{id}
+"""
 from __future__ import annotations
 
 import uuid
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 from loguru import logger
 
 from app.database import get_db
-from app.models.schemas import FeatureCreate, FeatureOut
+from app.models.schemas import FeatureCreate, FeatureUpdate, FeatureOut
+from app.utils.exceptions import NotFoundException
 
 router = APIRouter(tags=["features"])
+
+
+async def _row_to_feature(db, r) -> FeatureOut:
+    """转换行数据为响应模型，包含 case_count"""
+    cursor = await db.execute("SELECT COUNT(*) as c FROM cases WHERE feature_id = ?", (r["id"],))
+    count_row = await cursor.fetchone()
+    return FeatureOut(
+        id=r["id"], projectId=r["project_id"], title=r["title"],
+        description=r["description"] or None, source=r["source"],
+        status=r["status"], caseCount=count_row["c"], createdAt=r["created_at"],
+    )
 
 
 @router.post("/features", response_model=FeatureOut)
@@ -16,29 +31,20 @@ async def create_feature(body: FeatureCreate):
     """创建功能点"""
     db = await get_db()
     try:
-        # 校验项目存在
         cursor = await db.execute("SELECT id FROM projects WHERE id = ?", (body.project_id,))
         if not await cursor.fetchone():
-            raise HTTPException(status_code=404, detail="项目不存在")
+            raise NotFoundException("项目不存在")
 
         feature_id = str(uuid.uuid4())
         await db.execute(
-            "INSERT INTO features (id, project_id, name, description) VALUES (?, ?, ?, ?)",
-            (feature_id, body.project_id, body.name, body.description),
+            "INSERT INTO features (id, project_id, title, description, source) VALUES (?, ?, ?, ?, ?)",
+            (feature_id, body.project_id, body.title, body.description or "", body.source),
         )
         await db.commit()
         cursor = await db.execute("SELECT * FROM features WHERE id = ?", (feature_id,))
         row = await cursor.fetchone()
-        logger.info(f"创建功能点: {body.name} (project={body.project_id})")
-        return FeatureOut(
-            id=row["id"], projectId=row["project_id"], name=row["name"],
-            description=row["description"], status=row["status"], createdAt=row["created_at"],
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"创建功能点失败: {e}")
-        raise HTTPException(status_code=500, detail="创建功能点失败")
+        logger.info(f"创建功能点: {body.title} (project={body.project_id})")
+        return await _row_to_feature(db, row)
     finally:
         await db.close()
 
@@ -53,15 +59,70 @@ async def list_features(project_id: str = Query(..., alias="projectId")):
             (project_id,),
         )
         rows = await cursor.fetchall()
-        return [
-            FeatureOut(
-                id=r["id"], projectId=r["project_id"], name=r["name"],
-                description=r["description"], status=r["status"], createdAt=r["created_at"],
-            )
-            for r in rows
-        ]
-    except Exception as e:
-        logger.error(f"获取功能点列表失败: {e}")
-        raise HTTPException(status_code=500, detail="获取功能点列表失败")
+        return [await _row_to_feature(db, r) for r in rows]
+    finally:
+        await db.close()
+
+
+@router.get("/features/{feature_id}", response_model=FeatureOut)
+async def get_feature(feature_id: str):
+    """获取功能点详情"""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM features WHERE id = ?", (feature_id,))
+        row = await cursor.fetchone()
+        if not row:
+            raise NotFoundException(f"未找到 ID 为 {feature_id} 的功能点")
+        return await _row_to_feature(db, row)
+    finally:
+        await db.close()
+
+
+@router.put("/features/{feature_id}", response_model=FeatureOut)
+async def update_feature(feature_id: str, body: FeatureUpdate):
+    """更新功能点"""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT id FROM features WHERE id = ?", (feature_id,))
+        if not await cursor.fetchone():
+            raise NotFoundException(f"未找到 ID 为 {feature_id} 的功能点")
+
+        updates, params = [], []
+        if body.title is not None:
+            updates.append("title = ?")
+            params.append(body.title)
+        if body.description is not None:
+            updates.append("description = ?")
+            params.append(body.description)
+        if body.status is not None:
+            updates.append("status = ?")
+            params.append(body.status.value)
+
+        if updates:
+            params.append(feature_id)
+            await db.execute(f"UPDATE features SET {', '.join(updates)} WHERE id = ?", params)
+            await db.commit()
+
+        cursor = await db.execute("SELECT * FROM features WHERE id = ?", (feature_id,))
+        row = await cursor.fetchone()
+        logger.info(f"更新功能点: {feature_id}")
+        return await _row_to_feature(db, row)
+    finally:
+        await db.close()
+
+
+@router.delete("/features/{feature_id}")
+async def delete_feature(feature_id: str):
+    """删除功能点"""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT id FROM features WHERE id = ?", (feature_id,))
+        if not await cursor.fetchone():
+            raise NotFoundException(f"未找到 ID 为 {feature_id} 的功能点")
+
+        await db.execute("DELETE FROM features WHERE id = ?", (feature_id,))
+        await db.commit()
+        logger.info(f"删除功能点: {feature_id}")
+        return {"ok": True}
     finally:
         await db.close()
