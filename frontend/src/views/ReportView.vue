@@ -1,42 +1,44 @@
 <template>
   <div class="report-view">
-    <!-- 项目选择 -->
+    <!-- 时间范围选择 -->
     <div class="toolbar">
-      <a-select v-model:value="selectedProjectId" placeholder="选择项目" style="width: 200px" @change="fetchReport">
-        <a-select-option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</a-select-option>
+      <a-select v-model:value="days" style="width: 140px" @change="fetchReport">
+        <a-select-option :value="7">最近 7 天</a-select-option>
+        <a-select-option :value="14">最近 14 天</a-select-option>
+        <a-select-option :value="30">最近 30 天</a-select-option>
       </a-select>
     </div>
 
     <a-spin :spinning="loading">
-      <a-empty v-if="!loading && !stats" description="请选择项目查看报告" />
+      <a-empty v-if="!loading && !dashboard" description="暂无报告数据" />
 
-      <template v-if="stats">
+      <template v-if="dashboard">
         <!-- 统计卡片 -->
         <a-row :gutter="16" class="stats-row">
           <a-col :span="6">
-            <a-statistic title="功能点覆盖率" :value="stats.coverageRate" suffix="%" :valueStyle="{ color: stats.coverageRate >= 80 ? '#3f8600' : '#cf1322' }" />
+            <a-statistic title="功能点总数" :value="dashboard.coverage.totalFeatures" />
           </a-col>
           <a-col :span="6">
-            <a-statistic title="用例通过率" :value="stats.passRate" suffix="%" :valueStyle="{ color: stats.passRate >= 80 ? '#3f8600' : '#cf1322' }" />
+            <a-statistic title="已覆盖" :value="dashboard.coverage.coveredFeatures" />
           </a-col>
           <a-col :span="6">
-            <a-statistic title="总用例数" :value="stats.totalCases" />
+            <a-statistic title="覆盖率" :value="(dashboard.coverage.coverageRate * 100).toFixed(1)" suffix="%" :valueStyle="{ color: dashboard.coverage.coverageRate >= 0.8 ? '#3f8600' : '#cf1322' }" />
           </a-col>
           <a-col :span="6">
-            <a-statistic title="失败用例" :value="stats.failedCases" :valueStyle="{ color: stats.failedCases > 0 ? '#cf1322' : '#3f8600' }" />
+            <a-statistic title="通过率" :value="(dashboard.passRate.passRate * 100).toFixed(1)" suffix="%" :valueStyle="{ color: dashboard.passRate.passRate >= 0.8 ? '#3f8600' : '#cf1322' }" />
           </a-col>
         </a-row>
 
         <!-- 图表区域 -->
         <a-row :gutter="16" style="margin-top: 24px">
           <a-col :span="12">
-            <a-card title="覆盖率/通过率">
-              <div ref="pieChartRef" style="height: 300px"></div>
+            <a-card title="通过率趋势">
+              <div ref="lineChartRef" style="height: 300px"></div>
             </a-card>
           </a-col>
           <a-col :span="12">
-            <a-card title="趋势图">
-              <div ref="lineChartRef" style="height: 300px"></div>
+            <a-card title="覆盖状态">
+              <div ref="pieChartRef" style="height: 300px"></div>
             </a-card>
           </a-col>
         </a-row>
@@ -46,18 +48,20 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, onUnmounted, nextTick } from 'vue'
-import type { Project, ReportStats, TrendPoint } from '../types'
+import { defineComponent, ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
+import { useRoute } from 'vue-router'
+import type { DashboardData } from '../types'
 import api from '../api'
 import * as echarts from 'echarts'
 
 export default defineComponent({
   name: 'ReportView',
   setup() {
-    const projects = ref<Project[]>([])
-    const stats = ref<ReportStats | null>(null)
-    const trend = ref<TrendPoint[]>([])
-    const selectedProjectId = ref<number>()
+    const route = useRoute()
+    const projectId = computed(() => route.params.projectId as string)
+
+    const dashboard = ref<DashboardData | null>(null)
+    const days = ref(7)
     const loading = ref(false)
 
     const pieChartRef = ref<HTMLElement>()
@@ -65,23 +69,11 @@ export default defineComponent({
     let pieChart: echarts.ECharts | null = null
     let lineChart: echarts.ECharts | null = null
 
-    async function fetchProjects() {
-      try {
-        const { data } = await api.get<Project[]>('/projects')
-        projects.value = data
-      } catch { /* 拦截器处理 */ }
-    }
-
     async function fetchReport() {
-      if (!selectedProjectId.value) return
       loading.value = true
       try {
-        const [statsRes, trendRes] = await Promise.all([
-          api.get<ReportStats>(`/reports/${selectedProjectId.value}/stats`),
-          api.get<TrendPoint[]>(`/reports/${selectedProjectId.value}/trend`),
-        ])
-        stats.value = statsRes.data
-        trend.value = trendRes.data
+        const { data } = await api.get<DashboardData>('/reports/dashboard', { params: { projectId: projectId.value } })
+        dashboard.value = data
         await nextTick()
         renderCharts()
       } catch { /* 拦截器处理 */ }
@@ -89,48 +81,41 @@ export default defineComponent({
     }
 
     function renderCharts() {
-      // 饼图：覆盖率和通过率
-      if (pieChartRef.value) {
-        pieChart = echarts.init(pieChartRef.value)
-        pieChart.setOption({
-          tooltip: { trigger: 'item' },
-          series: [
-            {
-              type: 'pie',
-              radius: ['40%', '70%'],
-              data: [
-                { value: stats.value!.passedCases, name: '通过', itemStyle: { color: '#52c41a' } },
-                { value: stats.value!.failedCases, name: '失败', itemStyle: { color: '#ff4d4f' } },
-                { value: stats.value!.totalCases - stats.value!.passedCases - stats.value!.failedCases, name: '其他', itemStyle: { color: '#d9d9d9' } },
-              ],
-            },
-          ],
-        })
-      }
+      if (!dashboard.value) return
 
-      // 折线图：趋势
-      if (lineChartRef.value && trend.value.length > 0) {
+      // 折线图：通过率趋势
+      if (lineChartRef.value && dashboard.value.trend.length > 0) {
         lineChart = echarts.init(lineChartRef.value)
         lineChart.setOption({
           tooltip: { trigger: 'axis' },
-          xAxis: { type: 'category', data: trend.value.map(t => t.date) },
+          xAxis: { type: 'category', data: dashboard.value.trend.map(t => t.date) },
           yAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' } },
-          legend: { data: ['通过率', '覆盖率'] },
-          series: [
-            { name: '通过率', type: 'line', data: trend.value.map(t => t.passRate), smooth: true, itemStyle: { color: '#1890ff' } },
-            { name: '覆盖率', type: 'line', data: trend.value.map(t => t.coverageRate), smooth: true, itemStyle: { color: '#52c41a' } },
-          ],
+          series: [{ name: '通过率', type: 'line', data: dashboard.value.trend.map(t => (t.passRate * 100).toFixed(1)), smooth: true, itemStyle: { color: '#1890ff' } }],
+        })
+      }
+
+      // 饼图：覆盖状态
+      if (pieChartRef.value) {
+        pieChart = echarts.init(pieChartRef.value)
+        const covered = dashboard.value.coverage.coveredFeatures
+        const uncovered = dashboard.value.coverage.totalFeatures - covered
+        pieChart.setOption({
+          tooltip: { trigger: 'item' },
+          series: [{
+            type: 'pie', radius: ['40%', '70%'],
+            data: [
+              { value: covered, name: '已覆盖', itemStyle: { color: '#52c41a' } },
+              { value: uncovered, name: '未覆盖', itemStyle: { color: '#d9d9d9' } },
+            ],
+          }],
         })
       }
     }
 
-    function handleResize() {
-      pieChart?.resize()
-      lineChart?.resize()
-    }
+    function handleResize() { pieChart?.resize(); lineChart?.resize() }
 
     onMounted(() => {
-      fetchProjects()
+      fetchReport()
       window.addEventListener('resize', handleResize)
     })
 
@@ -140,7 +125,7 @@ export default defineComponent({
       lineChart?.dispose()
     })
 
-    return { projects, stats, selectedProjectId, loading, pieChartRef, lineChartRef, fetchReport }
+    return { dashboard, days, loading, pieChartRef, lineChartRef, fetchReport }
   },
 })
 </script>
