@@ -10,7 +10,7 @@ from loguru import logger
 
 from app.database import get_db
 from app.models.schemas import ProjectCreate, ProjectUpdate, ProjectOut
-from app.utils.exceptions import NotFoundException
+from app.utils.exceptions import NotFoundException, ConflictException
 
 router = APIRouter(tags=["projects"])
 
@@ -28,6 +28,11 @@ async def create_project(body: ProjectCreate):
     """创建项目"""
     db = await get_db()
     try:
+        # TC-012: 项目名称唯一性检查
+        cursor = await db.execute("SELECT id FROM projects WHERE name = ?", (body.name,))
+        if await cursor.fetchone():
+            raise ConflictException("项目名称已存在")
+
         project_id = str(uuid.uuid4())
         await db.execute(
             "INSERT INTO projects (id, name, repo_url, description) VALUES (?, ?, ?, ?)",
