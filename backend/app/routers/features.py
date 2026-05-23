@@ -10,7 +10,7 @@ from loguru import logger
 
 from app.database import get_db
 from app.models.schemas import FeatureCreate, FeatureUpdate, FeatureOut
-from app.utils.exceptions import NotFoundException
+from app.utils.exceptions import NotFoundException, ConflictException
 
 router = APIRouter(tags=["features"])
 
@@ -34,6 +34,14 @@ async def create_feature(body: FeatureCreate):
         cursor = await db.execute("SELECT id FROM projects WHERE id = ?", (body.project_id,))
         if not await cursor.fetchone():
             raise NotFoundException("项目不存在")
+
+        # TC-022: 项目内功能点名称唯一性检查
+        cursor = await db.execute(
+            "SELECT id FROM features WHERE project_id = ? AND title = ?",
+            (body.project_id, body.title),
+        )
+        if await cursor.fetchone():
+            raise ConflictException("该项目下功能点名称已存在")
 
         feature_id = str(uuid.uuid4())
         await db.execute(
