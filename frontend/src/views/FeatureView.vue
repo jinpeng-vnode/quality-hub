@@ -3,13 +3,10 @@
     <!-- 筛选栏 -->
     <div class="toolbar">
       <a-space>
-        <a-select v-model:value="filters.projectId" placeholder="选择项目" style="width: 200px" allowClear @change="fetchFeatures">
-          <a-select-option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</a-select-option>
-        </a-select>
         <a-select v-model:value="filters.status" placeholder="状态筛选" style="width: 140px" allowClear @change="fetchFeatures">
-          <a-select-option value="pending">待处理</a-select-option>
-          <a-select-option value="in_progress">进行中</a-select-option>
-          <a-select-option value="done">已完成</a-select-option>
+          <a-select-option value="pending">待覆盖</a-select-option>
+          <a-select-option value="partial">部分覆盖</a-select-option>
+          <a-select-option value="covered">已覆盖</a-select-option>
         </a-select>
         <a-button type="primary" @click="showModal = true">新建功能点</a-button>
       </a-space>
@@ -17,13 +14,10 @@
 
     <a-spin :spinning="loading">
       <a-empty v-if="!loading && features.length === 0" description="暂无功能点" />
-      <a-table v-else :dataSource="features" :columns="columns" rowKey="id" :pagination="{ pageSize: 10 }">
+      <a-table v-else :dataSource="features" :columns="columns" rowKey="id" :pagination="{ pageSize: 20 }">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'status'">
             <a-tag :color="statusColor(record.status)">{{ statusText(record.status) }}</a-tag>
-          </template>
-          <template v-if="column.key === 'priority'">
-            <a-tag :color="priorityColor(record.priority)">{{ record.priority }}</a-tag>
           </template>
           <template v-if="column.key === 'action'">
             <a-space>
@@ -40,30 +34,17 @@
     <!-- 新建/编辑弹窗 -->
     <a-modal v-model:open="showModal" :title="editingFeature ? '编辑功能点' : '新建功能点'" @ok="handleSubmit" @cancel="resetForm">
       <a-form :model="form" layout="vertical">
-        <a-form-item label="所属项目" required>
-          <a-select v-model:value="form.projectId" placeholder="选择项目">
-            <a-select-option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</a-select-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item label="功能点名称" required>
-          <a-input v-model:value="form.name" placeholder="请输入功能点名称" />
+        <a-form-item label="功能点标题" required>
+          <a-input v-model:value="form.title" placeholder="请输入功能点标题" />
         </a-form-item>
         <a-form-item label="描述">
           <a-textarea v-model:value="form.description" :rows="3" />
         </a-form-item>
-        <a-form-item label="优先级">
-          <a-select v-model:value="form.priority">
-            <a-select-option value="P0">P0</a-select-option>
-            <a-select-option value="P1">P1</a-select-option>
-            <a-select-option value="P2">P2</a-select-option>
-            <a-select-option value="P3">P3</a-select-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item label="状态">
-          <a-select v-model:value="form.status">
-            <a-select-option value="pending">待处理</a-select-option>
-            <a-select-option value="in_progress">进行中</a-select-option>
-            <a-select-option value="done">已完成</a-select-option>
+        <a-form-item label="来源">
+          <a-select v-model:value="form.source" placeholder="选择来源" allowClear>
+            <a-select-option value="prd">PRD</a-select-option>
+            <a-select-option value="issue">Issue</a-select-option>
+            <a-select-option value="manual">手动</a-select-option>
           </a-select>
         </a-form-item>
       </a-form>
@@ -72,53 +53,45 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, reactive, onMounted } from 'vue'
+import { defineComponent, ref, reactive, onMounted, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
-import type { Feature, Project } from '../types'
+import type { Feature } from '../types'
 import api from '../api'
 
 const columns = [
   { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
-  { title: '功能点名称', dataIndex: 'name', key: 'name' },
-  { title: '描述', dataIndex: 'description', key: 'description', ellipsis: true },
-  { title: '优先级', key: 'priority', width: 80 },
+  { title: '标题', dataIndex: 'title', key: 'title' },
+  { title: '来源', dataIndex: 'source', key: 'source', width: 80 },
   { title: '状态', key: 'status', width: 100 },
+  { title: '用例数', dataIndex: 'caseCount', key: 'caseCount', width: 80 },
   { title: '操作', key: 'action', width: 120 },
 ]
 
 function statusColor(s: string) {
-  return s === 'done' ? 'green' : s === 'in_progress' ? 'blue' : 'default'
+  return s === 'covered' ? 'green' : s === 'partial' ? 'blue' : 'default'
 }
 function statusText(s: string) {
-  return s === 'done' ? '已完成' : s === 'in_progress' ? '进行中' : '待处理'
-}
-function priorityColor(p: string) {
-  return p === 'P0' ? 'red' : p === 'P1' ? 'orange' : p === 'P2' ? 'blue' : 'default'
+  return s === 'covered' ? '已覆盖' : s === 'partial' ? '部分覆盖' : '待覆盖'
 }
 
 export default defineComponent({
   name: 'FeatureView',
   setup() {
+    const route = useRoute()
+    const projectId = computed(() => route.params.projectId as string)
+
     const features = ref<Feature[]>([])
-    const projects = ref<Project[]>([])
     const loading = ref(false)
     const showModal = ref(false)
     const editingFeature = ref<Feature | null>(null)
-    const filters = reactive({ projectId: undefined as number | undefined, status: undefined as string | undefined })
-    const form = reactive({ projectId: undefined as number | undefined, name: '', description: '', priority: 'P1', status: 'pending' })
-
-    async function fetchProjects() {
-      try {
-        const { data } = await api.get<Project[]>('/projects')
-        projects.value = data
-      } catch { /* 拦截器处理 */ }
-    }
+    const filters = reactive({ status: undefined as string | undefined })
+    const form = reactive({ title: '', description: '', source: undefined as string | undefined })
 
     async function fetchFeatures() {
       loading.value = true
       try {
-        const params: Record<string, unknown> = {}
-        if (filters.projectId) params.projectId = filters.projectId
+        const params: Record<string, unknown> = { projectId: projectId.value }
         if (filters.status) params.status = filters.status
         const { data } = await api.get<Feature[]>('/features', { params })
         features.value = data
@@ -128,34 +101,30 @@ export default defineComponent({
 
     function editFeature(record: Feature) {
       editingFeature.value = record
-      form.projectId = record.projectId
-      form.name = record.name
-      form.description = record.description
-      form.priority = record.priority
-      form.status = record.status
+      form.title = record.title
+      form.description = record.description || ''
+      form.source = record.source || undefined
       showModal.value = true
     }
 
     function resetForm() {
       editingFeature.value = null
-      form.projectId = undefined
-      form.name = ''
+      form.title = ''
       form.description = ''
-      form.priority = 'P1'
-      form.status = 'pending'
+      form.source = undefined
     }
 
     async function handleSubmit() {
-      if (!form.name.trim() || !form.projectId) {
-        message.warning('请填写必填项')
+      if (!form.title.trim()) {
+        message.warning('请填写功能点标题')
         return
       }
       try {
         if (editingFeature.value) {
-          await api.put(`/features/${editingFeature.value.id}`, form)
+          await api.put(`/features/${editingFeature.value.id}`, { title: form.title, description: form.description })
           message.success('更新成功')
         } else {
-          await api.post('/features', form)
+          await api.post('/features', { projectId: Number(projectId.value), title: form.title, description: form.description, source: form.source })
           message.success('创建成功')
         }
         showModal.value = false
@@ -172,9 +141,9 @@ export default defineComponent({
       } catch { /* 拦截器处理 */ }
     }
 
-    onMounted(() => { fetchProjects(); fetchFeatures() })
+    onMounted(fetchFeatures)
 
-    return { features, projects, loading, showModal, editingFeature, filters, form, columns, statusColor, statusText, priorityColor, editFeature, resetForm, handleSubmit, deleteFeature, fetchFeatures }
+    return { features, loading, showModal, editingFeature, filters, form, columns, statusColor, statusText, editFeature, resetForm, handleSubmit, deleteFeature, fetchFeatures }
   },
 })
 </script>
