@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Query
+from pydantic import BaseModel, Field
 from loguru import logger
 
 from app.database import get_db
@@ -13,6 +14,27 @@ from app.models.schemas import (
 )
 
 router = APIRouter(tags=["reports"])
+
+
+class OverviewOut(BaseModel):
+    """全局概览响应模型"""
+    total_projects: int = Field(alias="totalProjects")
+    total_features: int = Field(alias="totalFeatures")
+    total_cases: int = Field(alias="totalCases")
+    model_config = {"populate_by_name": True}
+
+
+@router.get("/dashboard/overview", response_model=OverviewOut)
+async def get_overview():
+    """TC-053: 全局看板概览，返回所有项目的汇总数据"""
+    db = await get_db()
+    try:
+        projects = (await (await db.execute("SELECT COUNT(*) as c FROM projects")).fetchone())["c"]
+        features = (await (await db.execute("SELECT COUNT(*) as c FROM features")).fetchone())["c"]
+        cases = (await (await db.execute("SELECT COUNT(*) as c FROM cases")).fetchone())["c"]
+        return OverviewOut(totalProjects=projects, totalFeatures=features, totalCases=cases)
+    finally:
+        await db.close()
 
 
 @router.get("/reports/dashboard", response_model=DashboardOut)
