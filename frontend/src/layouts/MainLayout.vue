@@ -1,6 +1,6 @@
 <template>
   <a-layout class="app-layout">
-    <a-layout-sider v-model:collapsed="collapsed" collapsible>
+    <a-layout-sider :width="200" :style="{ position: 'fixed', height: '100vh', left: 0 }">
       <div class="logo">QHub</div>
       <a-menu theme="dark" mode="inline" :selectedKeys="selectedKeys" @click="onMenuClick">
         <a-menu-item key="projects">
@@ -27,11 +27,13 @@
         </template>
       </a-menu>
     </a-layout-sider>
-    <a-layout>
-      <a-layout-header class="app-header">
-        <h2>{{ pageTitle }}</h2>
-      </a-layout-header>
+    <a-layout :style="{ marginLeft: '200px' }">
       <a-layout-content class="app-content">
+        <!-- 页面标题 -->
+        <div class="page-header">
+          <h1 class="page-title">{{ pageTitle }}</h1>
+        </div>
+        <!-- 页面内容 -->
         <router-view />
       </a-layout-content>
     </a-layout>
@@ -63,7 +65,6 @@ export default defineComponent({
   setup() {
     const router = useRouter()
     const route = useRoute()
-    const collapsed = ref(false)
 
     const projectId = computed(() => route.params.projectId as string | undefined)
 
@@ -90,7 +91,7 @@ export default defineComponent({
       }
     }
 
-    return { collapsed, selectedKeys, pageTitle, projectId, onMenuClick }
+    return { selectedKeys, pageTitle, projectId, onMenuClick }
   },
 })
 </script>
@@ -98,6 +99,7 @@ export default defineComponent({
 <style scoped>
 .app-layout { min-height: 100vh; }
 .logo { height: 32px; margin: 16px; color: #fff; font-size: 18px; font-weight: bold; text-align: center; line-height: 32px; }
-.app-header { background: #fff; padding: 0 24px; display: flex; align-items: center; }
-.app-content { margin: 16px; padding: 24px; background: #fff; min-height: 280px; }
+.app-content { padding: 24px; min-width: 960px; }
+.page-header { padding-top: 32px; margin-bottom: 24px; }
+.page-title { font-size: 20px; font-weight: 600; margin: 0; color: rgba(0, 0, 0, 0.88); }
 </style>

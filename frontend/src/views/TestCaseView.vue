@@ -2,7 +2,7 @@
   <div class="testcase-view">
     <!-- 筛选栏 -->
     <div class="toolbar">
-      <a-space>
+      <a-space :size="12">
         <a-select v-model:value="filters.featureId" placeholder="选择功能点" style="width: 200px" allowClear @change="fetchCases">
           <a-select-option v-for="f in features" :key="f.id" :value="f.id">{{ f.title }}</a-select-option>
         </a-select>
@@ -10,25 +10,37 @@
           <a-select-option value="manual">手动</a-select-option>
           <a-select-option value="e2e">E2E</a-select-option>
         </a-select>
-        <a-button type="primary" @click="openCreate">新建用例</a-button>
       </a-space>
+      <a-button type="primary" @click="openCreate">
+        <template #icon><PlusOutlined /></template>
+        新建用例
+      </a-button>
     </div>
 
     <a-spin :spinning="loading">
       <a-empty v-if="!loading && testCases.length === 0" description="暂无测试用例" />
-      <a-table v-else :dataSource="testCases" :columns="columns" rowKey="id" :pagination="{ pageSize: 20 }">
-        <template #bodyCell="{ column, record }">
+      <a-table v-else :dataSource="testCases" :columns="columns" rowKey="id" :pagination="{ pageSize: 20 }" size="middle">
+        <template #bodyCell="{ column, record, text }">
+          <template v-if="column.key === 'id'">
+            <a-tooltip :title="text">
+              <span class="id-cell" @click="copyId(text)">{{ String(text).substring(0, 8) }}</span>
+            </a-tooltip>
+          </template>
           <template v-if="column.key === 'priority'">
-            <a-tag :color="record.priority === 'high' ? 'red' : record.priority === 'medium' ? 'orange' : 'blue'">{{ record.priority }}</a-tag>
+            <a-tag :color="priorityColor(record.priority)">{{ priorityText(record.priority) }}</a-tag>
           </template>
           <template v-if="column.key === 'caseType'">
-            <a-tag :color="record.caseType === 'e2e' ? 'purple' : 'default'">{{ record.caseType }}</a-tag>
+            <a-tag :color="typeColor(record.caseType)">{{ typeText(record.caseType) }}</a-tag>
           </template>
           <template v-if="column.key === 'action'">
-            <a-space>
-              <a @click="editCase(record)">编辑</a>
-              <a-popconfirm title="确认删除？" @confirm="deleteCase(record.id)">
-                <a style="color: red">删除</a>
+            <a-space :size="8">
+              <a-button type="link" size="small" @click="editCase(record)" aria-label="编辑">
+                <template #icon><EditOutlined /></template>
+              </a-button>
+              <a-popconfirm title="确定删除？" @confirm="deleteCase(record.id)">
+                <a-button type="link" size="small" danger aria-label="删除">
+                  <template #icon><DeleteOutlined /></template>
+                </a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -84,19 +96,34 @@
 import { defineComponent, ref, reactive, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import type { TestCase, Feature } from '../types'
 import api from '../api'
 
 const columns = [
-  { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
-  { title: '用例标题', dataIndex: 'title', key: 'title' },
-  { title: '优先级', key: 'priority', width: 80 },
-  { title: '类型', key: 'caseType', width: 80 },
-  { title: '操作', key: 'action', width: 120 },
+  { title: 'ID', dataIndex: 'id', key: 'id', width: 100, fixed: 'left' as const },
+  { title: '用例标题', dataIndex: 'title', key: 'title', ellipsis: true },
+  { title: '优先级', key: 'priority', dataIndex: 'priority', width: 100 },
+  { title: '类型', key: 'caseType', dataIndex: 'caseType', width: 100 },
+  { title: '操作', key: 'action', width: 120, fixed: 'right' as const },
 ]
+
+function priorityColor(p: string) {
+  return p === 'high' ? 'error' : p === 'medium' ? 'processing' : 'default'
+}
+function priorityText(p: string) {
+  return p === 'high' ? '高' : p === 'medium' ? '中' : '低'
+}
+function typeColor(t: string) {
+  return t === 'e2e' ? 'purple' : 'default'
+}
+function typeText(t: string) {
+  return t === 'e2e' ? 'E2E' : '手动'
+}
 
 export default defineComponent({
   name: 'TestCaseView',
+  components: { PlusOutlined, EditOutlined, DeleteOutlined },
   setup() {
     const route = useRoute()
     const projectId = computed(() => route.params.projectId as string)
@@ -116,6 +143,11 @@ export default defineComponent({
       caseType: 'manual' as string,
       midsceneScript: '',
     })
+
+    function copyId(id: string) {
+      navigator.clipboard.writeText(id)
+      message.success('已复制')
+    }
 
     async function fetchFeatures() {
       try {
@@ -199,11 +231,11 @@ export default defineComponent({
 
     onMounted(() => { fetchFeatures(); fetchCases() })
 
-    return { testCases, features, loading, showDrawer, editingCase, filters, form, columns, openCreate, editCase, resetForm, handleSubmit, deleteCase, fetchCases }
+    return { testCases, features, loading, showDrawer, editingCase, filters, form, columns, priorityColor, priorityText, typeColor, typeText, copyId, openCreate, editCase, resetForm, handleSubmit, deleteCase, fetchCases }
   },
 })
 </script>
 
 <style scoped>
-.toolbar { margin-bottom: 16px; }
+.toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 </style>
