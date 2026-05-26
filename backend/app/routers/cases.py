@@ -175,13 +175,15 @@ async def update_case(case_id: str, body: CaseUpdate):
 
 @router.delete("/cases/{case_id}")
 async def delete_case(case_id: str):
-    """删除测试用例"""
+    """删除测试用例（级联删除关联的 run_results）"""
     db = await get_db()
     try:
         cursor = await db.execute("SELECT id FROM cases WHERE id = ?", (case_id,))
         if not await cursor.fetchone():
             raise NotFoundException(f"未找到 ID 为 {case_id} 的测试用例")
 
+        # 级联删除关联的执行结果
+        await db.execute("DELETE FROM run_results WHERE case_id = ?", (case_id,))
         await db.execute("DELETE FROM cases WHERE id = ?", (case_id,))
         await db.commit()
         logger.info(f"删除测试用例: {case_id}")
