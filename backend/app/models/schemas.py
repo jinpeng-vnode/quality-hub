@@ -127,7 +127,15 @@ class CaseOut(BaseModel):
 class RunCreate(BaseModel):
     project_id: str = Field(..., alias="projectId")
     case_ids: list[str] = Field(default_factory=list, alias="caseIds")
-    env_url: str | None = Field(None, alias="envUrl")
+    mode: str = Field(default="manual")  # "manual" | "script"
+    model_config = {"populate_by_name": True}
+
+
+class RunResultUpdate(BaseModel):
+    """手动标记单条结果"""
+    status: str = Field(...)  # "passed" | "failed" | "skipped"
+    error_message: str = Field(default="", alias="errorMessage")
+    duration_ms: int = Field(default=0, alias="durationMs")
     model_config = {"populate_by_name": True}
 
 
@@ -135,9 +143,11 @@ class RunOut(BaseModel):
     id: str
     project_id: str = Field(alias="projectId")
     status: RunStatus
+    mode: str = Field(default="manual")
     total: int
     passed: int
     failed: int
+    skipped: int = Field(default=0)
     started_at: str | None = Field(None, alias="startedAt")
     finished_at: str | None = Field(None, alias="finishedAt")
     created_at: str = Field(alias="createdAt")
@@ -150,8 +160,8 @@ class RunResultOut(BaseModel):
     case_id: str = Field(alias="caseId")
     status: RunStatus
     error_message: str | None = Field(None, alias="errorMessage")
-    screenshot_url: str | None = Field(None, alias="screenshotUrl")
     duration_ms: int | None = Field(None, alias="durationMs")
+    log: str = Field(default="")
     model_config = {"populate_by_name": True}
 
 
