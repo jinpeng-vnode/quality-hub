@@ -109,13 +109,28 @@ async def update_project(project_id: str, body: ProjectUpdate):
 
 @router.delete("/projects/{project_id}")
 async def delete_project(project_id: str):
-    """删除项目"""
+    """删除项目（级联删除所有关联数据）"""
     db = await get_db()
     try:
         cursor = await db.execute("SELECT id FROM projects WHERE id = ?", (project_id,))
         if not await cursor.fetchone():
             raise NotFoundException(f"未找到 ID 为 {project_id} 的项目")
 
+        # 级联删除：run_results → runs → cases → features → project
+        await db.execute(
+            "DELETE FROM run_results WHERE run_id IN (SELECT id FROM runs WHERE project_id = ?)",
+            (project_id,),
+        )
+        await db.execute("DELETE FROM runs WHERE project_id = ?", (project_id,))
+        await db.execute(
+            "DELETE FROM run_results WHERE case_id IN (SELECT c.id FROM cases c JOIN features f ON c.feature_id = f.id WHERE f.project_id = ?)",
+            (project_id,),
+        )
+        await db.execute(
+            "DELETE FROM cases WHERE feature_id IN (SELECT id FROM features WHERE project_id = ?)",
+            (project_id,),
+        )
+        await db.execute("DELETE FROM features WHERE project_id = ?", (project_id,))
         await db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
         await db.commit()
         logger.info(f"删除项目: {project_id}")
