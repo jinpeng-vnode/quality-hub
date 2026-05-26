@@ -82,7 +82,7 @@ const columns = [
 ]
 
 function statusColor(s: string) {
-  return s === 'covered' ? 'success' : s === 'partial' ? 'processing' : 'default'
+  return s === 'covered' ? 'success' : s === 'partial' ? 'processing' : 'warning'
 }
 function statusText(s: string) {
   return s === 'covered' ? '已覆盖' : s === 'partial' ? '部分覆盖' : '待覆盖'

@@ -115,7 +115,7 @@ function priorityText(p: string) {
   return p === 'high' ? '高' : p === 'medium' ? '中' : '低'
 }
 function typeColor(t: string) {
-  return t === 'e2e' ? 'purple' : 'default'
+  return t === 'e2e' ? 'purple' : 'blue'
 }
 function typeText(t: string) {
   return t === 'e2e' ? 'E2E' : '手动'
