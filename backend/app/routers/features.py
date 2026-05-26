@@ -121,13 +121,19 @@ async def update_feature(feature_id: str, body: FeatureUpdate):
 
 @router.delete("/features/{feature_id}")
 async def delete_feature(feature_id: str):
-    """删除功能点"""
+    """删除功能点（级联删除关联的 cases 和 run_results）"""
     db = await get_db()
     try:
         cursor = await db.execute("SELECT id FROM features WHERE id = ?", (feature_id,))
         if not await cursor.fetchone():
             raise NotFoundException(f"未找到 ID 为 {feature_id} 的功能点")
 
+        # 级联删除：run_results → cases → feature
+        await db.execute(
+            "DELETE FROM run_results WHERE case_id IN (SELECT id FROM cases WHERE feature_id = ?)",
+            (feature_id,),
+        )
+        await db.execute("DELETE FROM cases WHERE feature_id = ?", (feature_id,))
         await db.execute("DELETE FROM features WHERE id = ?", (feature_id,))
         await db.commit()
         logger.info(f"删除功能点: {feature_id}")
