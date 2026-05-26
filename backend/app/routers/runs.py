@@ -1,17 +1,22 @@
 """backend/app/routers/runs.py — 执行管理 API
 
-端点: POST/GET /runs, GET /runs/{id}, GET /runs/{id}/results
+端点: POST/GET /runs, GET /runs/{id}, GET /runs/{id}/results, PUT /runs/{id}/results/{result_id}
 """
 from __future__ import annotations
 
+import asyncio
+import shutil
+import tempfile
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
+
 from fastapi import APIRouter, Query
 from loguru import logger
 
 from app.database import get_db
-from app.models.schemas import RunCreate, RunOut, RunResultOut
-from app.utils.exceptions import NotFoundException
+from app.models.schemas import RunCreate, RunOut, RunResultOut, RunResultUpdate
+from app.utils.exceptions import NotFoundException, ForbiddenException
 
 router = APIRouter(tags=["runs"])
 
@@ -19,14 +24,25 @@ router = APIRouter(tags=["runs"])
 def _row_to_run(r) -> RunOut:
     return RunOut(
         id=r["id"], projectId=r["project_id"], status=r["status"],
+        mode=r["mode"] if "mode" in r.keys() else "manual",
         total=r["total"], passed=r["passed"], failed=r["failed"],
+        skipped=r["skipped"] if "skipped" in r.keys() else 0,
         startedAt=r["started_at"], finishedAt=r["finished_at"], createdAt=r["created_at"],
+    )
+
+
+def _row_to_result(r) -> RunResultOut:
+    return RunResultOut(
+        id=r["id"], runId=r["run_id"], caseId=r["case_id"],
+        status=r["status"], errorMessage=r["error_message"] or None,
+        durationMs=r["duration_ms"],
+        log=r["log"] if "log" in r.keys() else "",
     )
 
 
 @router.post("/runs", response_model=RunOut)
 async def create_run(body: RunCreate):
-    """创建执行记录并触发测试运行"""
+    """创建执行记录，mode=manual等待手动标记，mode=script后台执行脚本"""
     db = await get_db()
     try:
         cursor = await db.execute("SELECT id FROM projects WHERE id = ?", (body.project_id,))
@@ -36,49 +52,76 @@ async def create_run(body: RunCreate):
         # 获取要执行的用例
         if body.case_ids:
             placeholders = ",".join("?" * len(body.case_ids))
-            cursor = await db.execute(f"SELECT id FROM cases WHERE id IN ({placeholders})", body.case_ids)
+            cursor = await db.execute(f"SELECT id, midscene_script FROM cases WHERE id IN ({placeholders})", body.case_ids)
         else:
             cursor = await db.execute(
-                "SELECT c.id FROM cases c JOIN features f ON c.feature_id = f.id WHERE f.project_id = ?",
+                "SELECT c.id, c.midscene_script FROM cases c JOIN features f ON c.feature_id = f.id WHERE f.project_id = ?",
                 (body.project_id,),
             )
-        case_ids = [r["id"] for r in await cursor.fetchall()]
+        cases = [dict(r) for r in await cursor.fetchall()]
 
         run_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         await db.execute(
-            "INSERT INTO runs (id, project_id, status, total, env_url, started_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (run_id, body.project_id, "running", len(case_ids), body.env_url, now),
+            "INSERT INTO runs (id, project_id, status, mode, total, started_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (run_id, body.project_id, "running", body.mode, len(cases), now),
         )
 
         # 创建每条用例的执行结果记录
-        for cid in case_ids:
+        case_scripts = []
+        for c in cases:
+            result_id = str(uuid.uuid4())
             await db.execute(
                 "INSERT INTO run_results (id, run_id, case_id, status) VALUES (?, ?, ?, ?)",
-                (str(uuid.uuid4()), run_id, cid, "pending"),
+                (result_id, run_id, c["id"], "pending"),
             )
+            case_scripts.append({"result_id": result_id, "script": c.get("midscene_script") or ""})
         await db.commit()
 
-        # TODO: 等待集成测试 — 调用 Midscene.js 执行 E2E 测试
-        await _mark_run_complete(db, run_id, case_ids)
+        # script模式：后台异步执行
+        if body.mode == "script":
+            asyncio.create_task(_execute_script_run(run_id, case_scripts))
 
         cursor = await db.execute("SELECT * FROM runs WHERE id = ?", (run_id,))
         row = await cursor.fetchone()
-        logger.info(f"创建执行记录: {run_id} (用例数={len(case_ids)})")
+        logger.info(f"创建执行记录: {run_id} (mode={body.mode}, 用例数={len(cases)})")
         return _row_to_run(row)
     finally:
         await db.close()
 
 
-async def _mark_run_complete(db, run_id: str, case_ids: list[str]) -> None:
-    """临时：将执行标记为完成（Midscene 集成前的占位逻辑）"""
-    now = datetime.now(timezone.utc).isoformat()
-    await db.execute("UPDATE run_results SET status = 'passed' WHERE run_id = ?", (run_id,))
-    await db.execute(
-        "UPDATE runs SET status = 'passed', passed = ?, finished_at = ? WHERE id = ?",
-        (len(case_ids), now, run_id),
-    )
-    await db.commit()
+@router.put("/runs/{run_id}/results/{result_id}", response_model=RunResultOut)
+async def update_run_result(run_id: str, result_id: str, body: RunResultUpdate):
+    """手动标记单条执行结果（仅manual模式）"""
+    db = await get_db()
+    try:
+        # 检查run存在且为manual模式
+        cursor = await db.execute("SELECT mode FROM runs WHERE id = ?", (run_id,))
+        run_row = await cursor.fetchone()
+        if not run_row:
+            raise NotFoundException("执行记录不存在")
+        if run_row["mode"] != "manual":
+            raise ForbiddenException("仅手动模式可标记结果")
+
+        # 检查result存在
+        cursor = await db.execute("SELECT id FROM run_results WHERE id = ? AND run_id = ?", (result_id, run_id))
+        if not await cursor.fetchone():
+            raise NotFoundException("执行结果不存在")
+
+        # 更新result
+        await db.execute(
+            "UPDATE run_results SET status = ?, error_message = ?, duration_ms = ? WHERE id = ?",
+            (body.status, body.error_message, body.duration_ms, result_id),
+        )
+        await db.commit()
+
+        # 重新计算run统计
+        await _recalculate_run(db, run_id)
+
+        cursor = await db.execute("SELECT * FROM run_results WHERE id = ?", (result_id,))
+        return _row_to_result(await cursor.fetchone())
+    finally:
+        await db.close()
 
 
 @router.get("/runs", response_model=list[RunOut])
@@ -87,8 +130,7 @@ async def list_runs(project_id: str = Query(..., alias="projectId")):
     db = await get_db()
     try:
         cursor = await db.execute(
-            "SELECT * FROM runs WHERE project_id = ? ORDER BY created_at DESC",
-            (project_id,),
+            "SELECT * FROM runs WHERE project_id = ? ORDER BY created_at DESC", (project_id,),
         )
         return [_row_to_run(r) for r in await cursor.fetchall()]
     finally:
@@ -117,7 +159,6 @@ async def delete_run(run_id: str):
         cursor = await db.execute("SELECT id FROM runs WHERE id = ?", (run_id,))
         if not await cursor.fetchone():
             raise NotFoundException(f"未找到 ID 为 {run_id} 的执行记录")
-
         await db.execute("DELETE FROM run_results WHERE run_id = ?", (run_id,))
         await db.execute("DELETE FROM runs WHERE id = ?", (run_id,))
         await db.commit()
@@ -135,16 +176,97 @@ async def get_run_results(run_id: str):
         cursor = await db.execute("SELECT id FROM runs WHERE id = ?", (run_id,))
         if not await cursor.fetchone():
             raise NotFoundException(f"未找到 ID 为 {run_id} 的执行记录")
-
         cursor = await db.execute("SELECT * FROM run_results WHERE run_id = ?", (run_id,))
-        rows = await cursor.fetchall()
-        return [
-            RunResultOut(
-                id=r["id"], runId=r["run_id"], caseId=r["case_id"],
-                status=r["status"], errorMessage=r["error_message"] or None,
-                screenshotUrl=r["screenshot_url"], durationMs=r["duration_ms"],
-            )
-            for r in rows
-        ]
+        return [_row_to_result(r) for r in await cursor.fetchall()]
     finally:
         await db.close()
+
+
+# === 脚本执行引擎 ===
+
+async def _execute_script_run(run_id: str, case_scripts: list[dict]) -> None:
+    """后台执行脚本任务，串行处理每条用例"""
+    db = await get_db()
+    try:
+        for item in case_scripts:
+            result_id = item["result_id"]
+            script = item["script"]
+
+            if not script:
+                await db.execute(
+                    "UPDATE run_results SET status = 'skipped' WHERE id = ?", (result_id,),
+                )
+                await db.commit()
+                continue
+
+            start = datetime.now(timezone.utc)
+            status, log = await _run_single_script(script)
+            duration = int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
+            error_msg = log if status == "failed" else ""
+            await db.execute(
+                "UPDATE run_results SET status = ?, error_message = ?, duration_ms = ?, log = ? WHERE id = ?",
+                (status, error_msg, duration, log, result_id),
+            )
+            await db.commit()
+
+        # 更新run汇总
+        await _recalculate_run(db, run_id)
+    except Exception as e:
+        logger.error(f"脚本执行异常 run={run_id}: {e}")
+        now = datetime.now(timezone.utc).isoformat()
+        await db.execute(
+            "UPDATE runs SET status = 'error', finished_at = ? WHERE id = ?", (now, run_id),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def _run_single_script(script: str) -> tuple[str, str]:
+    """执行单条脚本，返回 (status, log)"""
+    tmp_dir = tempfile.mkdtemp(prefix="qh_run_")
+    script_path = Path(tmp_dir) / "test_script.py"
+    try:
+        script_path.write_text(script, encoding="utf-8")
+        proc = await asyncio.create_subprocess_exec(
+            "python3", str(script_path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=tmp_dir,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+        log = (stdout.decode() + "\n" + stderr.decode()).strip()
+        status = "passed" if proc.returncode == 0 else "failed"
+        return status, log
+    except asyncio.TimeoutError:
+        proc.kill()  # type: ignore
+        return "failed", "执行超时（60s）"
+    except Exception as e:
+        return "failed", f"执行异常: {e}"
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+async def _recalculate_run(db, run_id: str) -> None:
+    """重新计算run的统计数据，检查是否全部完成"""
+    cursor = await db.execute("SELECT status FROM run_results WHERE run_id = ?", (run_id,))
+    rows = await cursor.fetchall()
+    passed = sum(1 for r in rows if r["status"] == "passed")
+    failed = sum(1 for r in rows if r["status"] == "failed")
+    skipped = sum(1 for r in rows if r["status"] == "skipped")
+    pending = sum(1 for r in rows if r["status"] == "pending")
+
+    now = datetime.now(timezone.utc).isoformat()
+    if pending == 0:
+        # 全部完成
+        run_status = "failed" if failed > 0 else "passed"
+        await db.execute(
+            "UPDATE runs SET status = ?, passed = ?, failed = ?, skipped = ?, finished_at = ? WHERE id = ?",
+            (run_status, passed, failed, skipped, now, run_id),
+        )
+    else:
+        await db.execute(
+            "UPDATE runs SET passed = ?, failed = ?, skipped = ? WHERE id = ?",
+            (passed, failed, skipped, run_id),
+        )
+    await db.commit()
