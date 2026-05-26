@@ -78,8 +78,8 @@
             <a-select-option value="e2e">E2E</a-select-option>
           </a-select>
         </a-form-item>
-        <a-form-item v-if="form.caseType === 'e2e'" label="Midscene 脚本路径">
-          <a-input v-model:value="form.midsceneScript" placeholder="脚本文件路径" />
+        <a-form-item v-if="form.caseType === 'e2e'" label="Playwright 脚本">
+          <a-textarea v-model:value="form.midsceneScript" :rows="8" placeholder="输入 Python Playwright 测试脚本代码" style="font-family: monospace;" />
         </a-form-item>
       </a-form>
       <template #footer>
