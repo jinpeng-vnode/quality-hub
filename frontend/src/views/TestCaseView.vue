@@ -127,7 +127,7 @@ export default defineComponent({
     async function fetchCases() {
       loading.value = true
       try {
-        const params: Record<string, unknown> = {}
+        const params: Record<string, unknown> = { projectId: projectId.value }
         if (filters.featureId) params.featureId = filters.featureId
         if (filters.caseType) params.caseType = filters.caseType
         const { data } = await api.get<TestCase[]>('/cases', { params })
