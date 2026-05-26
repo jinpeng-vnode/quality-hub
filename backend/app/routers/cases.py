@@ -92,14 +92,25 @@ async def create_cases_batch(body: list[CaseCreate]):
 
 
 @router.get("/cases", response_model=list[CaseOut])
-async def list_cases(feature_id: str = Query(..., alias="featureId")):
-    """获取测试用例列表（按功能点筛选）"""
+async def list_cases(
+    feature_id: str | None = Query(None, alias="featureId"),
+    project_id: str | None = Query(None, alias="projectId"),
+):
+    """获取测试用例列表（按功能点或项目筛选）"""
     db = await get_db()
     try:
-        cursor = await db.execute(
-            "SELECT * FROM cases WHERE feature_id = ? ORDER BY created_at DESC",
-            (feature_id,),
-        )
+        if feature_id:
+            cursor = await db.execute(
+                "SELECT * FROM cases WHERE feature_id = ? ORDER BY created_at DESC",
+                (feature_id,),
+            )
+        elif project_id:
+            cursor = await db.execute(
+                "SELECT c.* FROM cases c JOIN features f ON c.feature_id = f.id WHERE f.project_id = ? ORDER BY c.created_at DESC",
+                (project_id,),
+            )
+        else:
+            return []
         return [_row_to_case(r) for r in await cursor.fetchall()]
     finally:
         await db.close()
