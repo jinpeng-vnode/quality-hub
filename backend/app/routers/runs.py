@@ -109,6 +109,24 @@ async def get_run(run_id: str):
         await db.close()
 
 
+@router.delete("/runs/{run_id}")
+async def delete_run(run_id: str):
+    """删除执行记录（级联删除关联的 run_results）"""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT id FROM runs WHERE id = ?", (run_id,))
+        if not await cursor.fetchone():
+            raise NotFoundException(f"未找到 ID 为 {run_id} 的执行记录")
+
+        await db.execute("DELETE FROM run_results WHERE run_id = ?", (run_id,))
+        await db.execute("DELETE FROM runs WHERE id = ?", (run_id,))
+        await db.commit()
+        logger.info(f"删除执行记录: {run_id}")
+        return {"ok": True}
+    finally:
+        await db.close()
+
+
 @router.get("/runs/{run_id}/results", response_model=list[RunResultOut])
 async def get_run_results(run_id: str):
     """获取执行结果明细"""
