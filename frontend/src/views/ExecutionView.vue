@@ -111,7 +111,7 @@ export default defineComponent({
     async function triggerRun() {
       triggering.value = true
       try {
-        await api.post('/runs', { projectId: Number(projectId.value), caseIds: [] })
+        await api.post('/runs', { projectId: projectId.value, caseIds: [] })
         message.success('执行已触发')
         fetchRuns()
       } catch { /* 拦截器处理 */ }
