@@ -2,28 +2,40 @@
   <div class="feature-view">
     <!-- 筛选栏 -->
     <div class="toolbar">
-      <a-space>
+      <a-space :size="12">
         <a-select v-model:value="filters.status" placeholder="状态筛选" style="width: 140px" allowClear @change="fetchFeatures">
           <a-select-option value="pending">待覆盖</a-select-option>
           <a-select-option value="partial">部分覆盖</a-select-option>
           <a-select-option value="covered">已覆盖</a-select-option>
         </a-select>
-        <a-button type="primary" @click="showModal = true">新建功能点</a-button>
       </a-space>
+      <a-button type="primary" @click="showModal = true">
+        <template #icon><PlusOutlined /></template>
+        新建功能点
+      </a-button>
     </div>
 
     <a-spin :spinning="loading">
       <a-empty v-if="!loading && features.length === 0" description="暂无功能点" />
-      <a-table v-else :dataSource="features" :columns="columns" rowKey="id" :pagination="{ pageSize: 20 }">
-        <template #bodyCell="{ column, record }">
+      <a-table v-else :dataSource="features" :columns="columns" rowKey="id" :pagination="{ pageSize: 20 }" size="middle">
+        <template #bodyCell="{ column, record, text }">
+          <template v-if="column.key === 'id'">
+            <a-tooltip :title="text">
+              <span class="id-cell" @click="copyId(text)">{{ String(text).substring(0, 8) }}</span>
+            </a-tooltip>
+          </template>
           <template v-if="column.key === 'status'">
             <a-tag :color="statusColor(record.status)">{{ statusText(record.status) }}</a-tag>
           </template>
           <template v-if="column.key === 'action'">
-            <a-space>
-              <a @click="editFeature(record)">编辑</a>
-              <a-popconfirm title="确认删除？" @confirm="deleteFeature(record.id)">
-                <a style="color: red">删除</a>
+            <a-space :size="8">
+              <a-button type="link" size="small" @click="editFeature(record)" aria-label="编辑">
+                <template #icon><EditOutlined /></template>
+              </a-button>
+              <a-popconfirm title="确定删除？" @confirm="deleteFeature(record.id)">
+                <a-button type="link" size="small" danger aria-label="删除">
+                  <template #icon><DeleteOutlined /></template>
+                </a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -56,20 +68,21 @@
 import { defineComponent, ref, reactive, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import type { Feature } from '../types'
 import api from '../api'
 
 const columns = [
-  { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
-  { title: '标题', dataIndex: 'title', key: 'title' },
-  { title: '来源', dataIndex: 'source', key: 'source', width: 80 },
-  { title: '状态', key: 'status', width: 100 },
+  { title: 'ID', dataIndex: 'id', key: 'id', width: 100, fixed: 'left' as const },
+  { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true },
+  { title: '来源', dataIndex: 'source', key: 'source', width: 100 },
+  { title: '状态', key: 'status', dataIndex: 'status', width: 100 },
   { title: '用例数', dataIndex: 'caseCount', key: 'caseCount', width: 80 },
-  { title: '操作', key: 'action', width: 120 },
+  { title: '操作', key: 'action', width: 120, fixed: 'right' as const },
 ]
 
 function statusColor(s: string) {
-  return s === 'covered' ? 'green' : s === 'partial' ? 'blue' : 'default'
+  return s === 'covered' ? 'success' : s === 'partial' ? 'processing' : 'default'
 }
 function statusText(s: string) {
   return s === 'covered' ? '已覆盖' : s === 'partial' ? '部分覆盖' : '待覆盖'
@@ -77,6 +90,7 @@ function statusText(s: string) {
 
 export default defineComponent({
   name: 'FeatureView',
+  components: { PlusOutlined, EditOutlined, DeleteOutlined },
   setup() {
     const route = useRoute()
     const projectId = computed(() => route.params.projectId as string)
@@ -87,6 +101,11 @@ export default defineComponent({
     const editingFeature = ref<Feature | null>(null)
     const filters = reactive({ status: undefined as string | undefined })
     const form = reactive({ title: '', description: '', source: undefined as string | undefined })
+
+    function copyId(id: string) {
+      navigator.clipboard.writeText(id)
+      message.success('已复制')
+    }
 
     async function fetchFeatures() {
       loading.value = true
@@ -143,11 +162,11 @@ export default defineComponent({
 
     onMounted(fetchFeatures)
 
-    return { features, loading, showModal, editingFeature, filters, form, columns, statusColor, statusText, editFeature, resetForm, handleSubmit, deleteFeature, fetchFeatures }
+    return { features, loading, showModal, editingFeature, filters, form, columns, statusColor, statusText, copyId, editFeature, resetForm, handleSubmit, deleteFeature, fetchFeatures }
   },
 })
 </script>
 
 <style scoped>
-.toolbar { margin-bottom: 16px; }
+.toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 </style>
