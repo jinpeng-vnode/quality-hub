@@ -60,10 +60,11 @@ async def init_db() -> None:
                 id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pending',
+                mode TEXT NOT NULL DEFAULT 'manual',
                 total INTEGER NOT NULL DEFAULT 0,
                 passed INTEGER NOT NULL DEFAULT 0,
                 failed INTEGER NOT NULL DEFAULT 0,
-                env_url TEXT DEFAULT NULL,
+                skipped INTEGER NOT NULL DEFAULT 0,
                 started_at TEXT,
                 finished_at TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -76,12 +77,25 @@ async def init_db() -> None:
                 case_id TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pending',
                 error_message TEXT DEFAULT '',
-                screenshot_url TEXT DEFAULT NULL,
                 duration_ms INTEGER DEFAULT 0,
+                log TEXT DEFAULT '',
                 FOREIGN KEY (run_id) REFERENCES runs(id),
                 FOREIGN KEY (case_id) REFERENCES cases(id)
             );
         """)
+        await db.commit()
+
+        # 迁移：为已有数据库添加新字段（SQLite ALTER TABLE 不报错如果列已存在则忽略）
+        migrations = [
+            "ALTER TABLE runs ADD COLUMN mode TEXT NOT NULL DEFAULT 'manual'",
+            "ALTER TABLE runs ADD COLUMN skipped INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE run_results ADD COLUMN log TEXT DEFAULT ''",
+        ]
+        for sql in migrations:
+            try:
+                await db.execute(sql)
+            except Exception:
+                pass  # 列已存在，忽略
         await db.commit()
     finally:
         await db.close()

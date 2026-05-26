@@ -48,9 +48,11 @@ export interface TestRun {
   id: number
   projectId: number
   status: RunStatus
+  mode: 'manual' | 'script'
   total: number
   passed: number
   failed: number
+  skipped: number
   startedAt: string | null
   finishedAt: string | null
   createdAt: string
@@ -61,10 +63,10 @@ export interface RunResult {
   id: number
   runId: number
   caseId: number
-  status: RunStatus
+  status: RunStatus | 'skipped'
   errorMessage: string | null
-  screenshotUrl: string | null
   durationMs: number | null
+  log: string
 }
 
 // 报告看板

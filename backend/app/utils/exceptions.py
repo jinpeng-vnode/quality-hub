@@ -30,6 +30,11 @@ class ConflictException(AppException):
         super().__init__(code="CONFLICT", message=message, status_code=409)
 
 
+class ForbiddenException(AppException):
+    def __init__(self, message: str = "操作被禁止"):
+        super().__init__(code="FORBIDDEN", message=message, status_code=403)
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """注册全局异常处理器"""
 
