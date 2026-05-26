@@ -124,7 +124,7 @@ export default defineComponent({
           await api.put(`/features/${editingFeature.value.id}`, { title: form.title, description: form.description })
           message.success('更新成功')
         } else {
-          await api.post('/features', { projectId: Number(projectId.value), title: form.title, description: form.description, source: form.source })
+          await api.post('/features', { projectId: projectId.value, title: form.title, description: form.description, source: form.source })
           message.success('创建成功')
         }
         showModal.value = false
