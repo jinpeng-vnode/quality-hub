@@ -84,7 +84,7 @@ async def create_run(body: RunCreate):
 
         # script模式：后台异步执行
         if body.mode == "script":
-            asyncio.create_task(_execute_script_run(run_id, case_scripts))
+            asyncio.create_task(_execute_script_run(run_id, case_scripts, body.timeout))
 
         cursor = await db.execute("SELECT * FROM runs WHERE id = ?", (run_id,))
         row = await cursor.fetchone()
@@ -290,7 +290,7 @@ async def get_run_report(run_id: str):
 
 # === 脚本执行引擎 ===
 
-async def _execute_script_run(run_id: str, case_scripts: list[dict]) -> None:
+async def _execute_script_run(run_id: str, case_scripts: list[dict], timeout: int = 60) -> None:
     """后台执行脚本任务，串行处理每条用例"""
     db = await get_db()
     try:
@@ -306,7 +306,7 @@ async def _execute_script_run(run_id: str, case_scripts: list[dict]) -> None:
                 continue
 
             start = datetime.now(_SHANGHAI_TZ)
-            status, log = await _run_single_script(script)
+            status, log = await _run_single_script(script, timeout)
             duration = int((datetime.now(_SHANGHAI_TZ) - start).total_seconds() * 1000)
             error_msg = log if status == "failed" else ""
             await db.execute(
@@ -328,7 +328,7 @@ async def _execute_script_run(run_id: str, case_scripts: list[dict]) -> None:
         await db.close()
 
 
-async def _run_single_script(script: str) -> tuple[str, str]:
+async def _run_single_script(script: str, timeout: int = 60) -> tuple[str, str]:
     """执行单条脚本，返回 (status, log)"""
     tmp_dir = tempfile.mkdtemp(prefix="qh_run_")
     script_path = Path(tmp_dir) / "test_script.py"
@@ -341,13 +341,13 @@ async def _run_single_script(script: str) -> tuple[str, str]:
             stderr=asyncio.subprocess.PIPE,
             cwd=tmp_dir,
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         log = (stdout.decode() + "\n" + stderr.decode()).strip()
         status = "passed" if proc.returncode == 0 else "failed"
         return status, log
     except asyncio.TimeoutError:
         proc.kill()  # type: ignore
-        return "failed", "执行超时（60s）"
+        return "failed", f"执行超时（{timeout}s）"
     except Exception as e:
         return "failed", f"执行异常: {e}"
     finally:
