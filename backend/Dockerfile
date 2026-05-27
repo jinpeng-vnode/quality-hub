@@ -16,6 +16,9 @@ ENV UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 COPY pyproject.toml uv.lock* ./
 RUN uv sync --frozen --no-dev 2>/dev/null || uv sync --no-dev 2>/dev/null || true
 
+# 安装 playwright chromium 及系统依赖
+RUN uv run playwright install chromium && uv run playwright install-deps
+
 # 复制源码
 COPY . .
 
