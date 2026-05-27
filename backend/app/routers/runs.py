@@ -236,6 +236,54 @@ async def get_run_results(run_id: str):
         await db.close()
 
 
+@router.get("/runs/{run_id}/report")
+async def get_run_report(run_id: str):
+    """获取单次执行的统计报告（通过数、失败数、跳过数、通过率、按功能点分组）"""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM runs WHERE id = ?", (run_id,))
+        row = await cursor.fetchone()
+        if not row:
+            raise NotFoundException("执行记录不存在")
+
+        cursor = await db.execute(
+            """SELECT rr.status, f.title as feature_title
+               FROM run_results rr
+               LEFT JOIN cases c ON rr.case_id = c.id
+               LEFT JOIN features f ON c.feature_id = f.id
+               WHERE rr.run_id = ?""",
+            (run_id,),
+        )
+        results = await cursor.fetchall()
+        passed = sum(1 for r in results if r["status"] == "passed")
+        failed = sum(1 for r in results if r["status"] == "failed")
+        skipped = sum(1 for r in results if r["status"] == "skipped")
+        total = len(results)
+        pass_rate = round(passed / total * 100, 1) if total > 0 else 0.0
+
+        # 按功能点分组统计
+        groups: dict[str, dict] = {}
+        for r in results:
+            ft = r["feature_title"] or "未分类"
+            if ft not in groups:
+                groups[ft] = {"featureTitle": ft, "passed": 0, "failed": 0, "skipped": 0, "total": 0}
+            groups[ft]["total"] += 1
+            if r["status"] in ("passed", "failed", "skipped"):
+                groups[ft][r["status"]] += 1
+
+        return {
+            "runId": run_id,
+            "total": total,
+            "passed": passed,
+            "failed": failed,
+            "skipped": skipped,
+            "passRate": pass_rate,
+            "groups": list(groups.values()),
+        }
+    finally:
+        await db.close()
+
+
 # === 脚本执行引擎 ===
 
 async def _execute_script_run(run_id: str, case_scripts: list[dict]) -> None:
