@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import sys
 import tempfile
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -333,19 +334,20 @@ async def _run_single_script(script: str) -> tuple[str, str]:
     script_path = Path(tmp_dir) / "test_script.py"
     try:
         script_path.write_text(script, encoding="utf-8")
+        # 使用当前解释器执行脚本，确保能找到 playwright 等依赖
         proc = await asyncio.create_subprocess_exec(
-            "python3", str(script_path),
+            sys.executable, str(script_path),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=tmp_dir,
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
         log = (stdout.decode() + "\n" + stderr.decode()).strip()
         status = "passed" if proc.returncode == 0 else "failed"
         return status, log
     except asyncio.TimeoutError:
         proc.kill()  # type: ignore
-        return "failed", "执行超时（15s）"
+        return "failed", "执行超时（60s）"
     except Exception as e:
         return "failed", f"执行异常: {e}"
     finally:
