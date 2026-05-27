@@ -160,6 +160,9 @@ class RunResultOut(BaseModel):
     id: str
     run_id: str = Field(alias="runId")
     case_id: str = Field(alias="caseId")
+    case_title: str = Field(default="", alias="caseTitle")
+    feature_id: str = Field(default="", alias="featureId")
+    feature_title: str = Field(default="", alias="featureTitle")
     status: RunStatus
     error_message: str | None = Field(None, alias="errorMessage")
     duration_ms: int | None = Field(None, alias="durationMs")
