@@ -190,3 +190,27 @@ async def delete_case(case_id: str):
         return {"ok": True}
     finally:
         await db.close()
+
+
+@router.post("/cases/{case_id}/execute")
+async def execute_case(case_id: str):
+    """即时执行单条用例脚本，同步返回结果（用于编辑时验证脚本）"""
+    from app.routers.runs import _run_single_script
+
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT midscene_script FROM cases WHERE id = ?", (case_id,))
+        row = await cursor.fetchone()
+        if not row:
+            raise NotFoundException("用例不存在")
+        script = row["midscene_script"] or ""
+        if not script:
+            return {"status": "skipped", "log": "无脚本", "durationMs": 0, "screenshots": []}
+    finally:
+        await db.close()
+
+    import time
+    start = time.time()
+    status, log, screenshots = await _run_single_script(script, timeout=60)
+    duration_ms = int((time.time() - start) * 1000)
+    return {"status": status, "log": log, "durationMs": duration_ms, "screenshots": screenshots}

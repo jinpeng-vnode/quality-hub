@@ -204,7 +204,7 @@ export default defineComponent({
         if (run.value && run.value.status !== 'running') {
           stopAutoRefresh()
         }
-      }, 5000)
+      }, 2000)
     }
     function stopAutoRefresh() {
       if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null }

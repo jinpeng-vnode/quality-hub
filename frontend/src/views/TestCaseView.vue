@@ -149,10 +149,30 @@ with sync_playwright() as p:
         </a-form-item>
       </a-form>
       <template #footer>
-        <a-space>
-          <a-button @click="showDrawer = false">取消</a-button>
-          <a-button type="primary" @click="handleSubmit">保存</a-button>
-        </a-space>
+        <div style="display: flex; justify-content: space-between;">
+          <a-button v-if="form.caseType === 'e2e' && form.midsceneScript && editingCase" :loading="executing" @click="executeScript" type="dashed">
+            <template #icon><PlayCircleOutlined /></template>
+            运行脚本
+          </a-button>
+          <span v-else></span>
+          <a-space>
+            <a-button @click="showDrawer = false">取消</a-button>
+            <a-button type="primary" @click="handleSubmit">保存</a-button>
+          </a-space>
+        </div>
+        <a-modal v-model:open="showResult" title="执行结果" :footer="null" width="640px">
+          <a-result :status="execResult.status === 'passed' ? 'success' : execResult.status === 'skipped' ? 'warning' : 'error'" :title="execResult.status === 'passed' ? '通过' : execResult.status === 'skipped' ? '跳过' : '失败'" :sub-title="`耗时: ${execResult.durationMs}ms`" />
+          <div v-if="execResult.log" style="margin-top: 12px;">
+            <strong>日志：</strong>
+            <pre style="background: #f5f5f5; padding: 8px; border-radius: 4px; max-height: 200px; overflow: auto; font-size: 12px; white-space: pre-wrap;">{{ execResult.log }}</pre>
+          </div>
+          <div v-if="execResult.screenshots && execResult.screenshots.length" style="margin-top: 12px;">
+            <strong>截图：</strong>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+              <a-image v-for="s in execResult.screenshots" :key="s" :src="s" :width="280" />
+            </div>
+          </div>
+        </a-modal>
       </template>
     </a-drawer>
   </div>
@@ -162,7 +182,7 @@ with sync_playwright() as p:
 import { defineComponent, ref, reactive, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, EditOutlined, DeleteOutlined, PlayCircleOutlined } from '@ant-design/icons-vue'
 import type { TestCase, Feature } from '../types'
 import api from '../api'
 
@@ -189,7 +209,7 @@ function typeText(t: string) {
 
 export default defineComponent({
   name: 'TestCaseView',
-  components: { PlusOutlined, EditOutlined, DeleteOutlined },
+  components: { PlusOutlined, EditOutlined, DeleteOutlined, PlayCircleOutlined },
   setup() {
     const route = useRoute()
     const projectId = computed(() => route.params.projectId as string)
@@ -314,7 +334,25 @@ export default defineComponent({
       fetchCases()
     })
 
-    return { testCases, features, loading, showDrawer, editingCase, filters, form, formSteps, columns, priorityColor, priorityText, typeColor, typeText, copyId, openCreate, editCase, resetForm, handleSubmit, deleteCase, fetchCases }
+    const executing = ref(false)
+    const showResult = ref(false)
+    const execResult = reactive({ status: '', log: '', durationMs: 0, screenshots: [] as string[] })
+
+    async function executeScript() {
+      if (!editingCase.value) return
+      executing.value = true
+      try {
+        const { data } = await api.post(`/cases/${editingCase.value.id}/execute`)
+        execResult.status = data.status
+        execResult.log = data.log
+        execResult.durationMs = data.durationMs
+        execResult.screenshots = data.screenshots || []
+        showResult.value = true
+      } catch { message.error('执行失败') }
+      finally { executing.value = false }
+    }
+
+    return { testCases, features, loading, showDrawer, editingCase, filters, form, formSteps, columns, priorityColor, priorityText, typeColor, typeText, copyId, openCreate, editCase, resetForm, handleSubmit, deleteCase, fetchCases, executing, showResult, execResult, executeScript }
   },
 })
 </script>

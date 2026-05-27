@@ -152,7 +152,7 @@ export default defineComponent({
         await fetchRuns()
         const hasRunning = runs.value.some(r => r.status === 'running')
         if (!hasRunning) stopAutoRefresh()
-      }, 5000)
+      }, 2000)
     }
     function stopAutoRefresh() {
       if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null }
