@@ -20,6 +20,13 @@
               <span>{{ formatRelativeTime(p.updatedAt || p.createdAt) }}</span>
               <span v-if="p.repoUrl">📦 {{ p.repoUrl.split('/').pop() }}</span>
             </div>
+            <div class="project-actions" @click.stop>
+              <a-popconfirm title="确定删除该项目？所有关联数据将被清除" @confirm="deleteProject(p.id)">
+                <a-button type="link" size="small" danger aria-label="删除项目">
+                  <template #icon><DeleteOutlined /></template>
+                </a-button>
+              </a-popconfirm>
+            </div>
           </a-card>
         </a-col>
       </a-row>
@@ -46,7 +53,7 @@
 import { defineComponent, ref, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { PlusOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import type { Project } from '../types'
 import api from '../api'
 
@@ -67,7 +74,7 @@ function formatRelativeTime(dateStr: string): string {
 
 export default defineComponent({
   name: 'ProjectView',
-  components: { PlusOutlined },
+  components: { PlusOutlined, DeleteOutlined },
   setup() {
     const router = useRouter()
     const projects = ref<Project[]>([])
@@ -118,7 +125,15 @@ export default defineComponent({
 
     onMounted(fetchProjects)
 
-    return { projects, loading, showModal, editingProject, form, formatRelativeTime, enterProject, resetForm, handleSubmit }
+    async function deleteProject(id: number) {
+      try {
+        await api.delete(`/projects/${id}`)
+        message.success('删除成功')
+        fetchProjects()
+      } catch { /* 拦截器处理 */ }
+    }
+
+    return { projects, loading, showModal, editingProject, form, formatRelativeTime, enterProject, resetForm, handleSubmit, deleteProject }
   },
 })
 </script>
@@ -132,4 +147,5 @@ export default defineComponent({
   -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
 .project-meta { font-size: 12px; color: rgba(0, 0, 0, 0.45); display: flex; gap: 12px; }
+.project-actions { position: absolute; top: 8px; right: 8px; }
 </style>

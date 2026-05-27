@@ -97,7 +97,7 @@ export default defineComponent({
       if (name === 'Projects') return ['projects']
       if (name === 'Features') return ['features']
       if (name === 'Cases') return ['cases']
-      if (name === 'Runs') return ['runs']
+      if (name === 'Runs' || name === 'RunDetail') return ['runs']
       if (name === 'Report') return ['report']
       return ['projects']
     })
