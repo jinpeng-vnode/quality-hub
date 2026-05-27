@@ -7,6 +7,21 @@
     </a-page-header>
 
     <a-spin :spinning="loading">
+      <!-- 报告统计卡片 -->
+      <a-row :gutter="16" v-if="report" style="margin-bottom: 24px;">
+        <a-col :span="6">
+          <a-card size="small"><a-statistic title="通过率" :value="report.passRate" suffix="%" :value-style="{ color: report.passRate >= 80 ? '#52c41a' : report.passRate >= 50 ? '#faad14' : '#ff4d4f' }" /></a-card>
+        </a-col>
+        <a-col :span="6">
+          <a-card size="small"><a-statistic title="通过" :value="report.passed" :value-style="{ color: '#52c41a' }" /></a-card>
+        </a-col>
+        <a-col :span="6">
+          <a-card size="small"><a-statistic title="失败" :value="report.failed" :value-style="{ color: '#ff4d4f' }" /></a-card>
+        </a-col>
+        <a-col :span="6">
+          <a-card size="small"><a-statistic title="跳过" :value="report.skipped" :value-style="{ color: '#faad14' }" /></a-card>
+        </a-col>
+      </a-row>
       <!-- 执行概要 -->
       <a-descriptions :column="{ xs: 2, sm: 3, md: 4 }" bordered size="small" v-if="run" style="margin-bottom: 24px;">
         <a-descriptions-item label="执行模式">
@@ -106,6 +121,7 @@ export default defineComponent({
 
     const run = ref<TestRun | null>(null)
     const results = ref<RunResult[]>([])
+    const report = ref<{ passed: number; failed: number; skipped: number; passRate: number; groups: any[] } | null>(null)
     const loading = ref(false)
 
     const hasPending = computed(() => results.value.some(r => r.status === 'pending'))
@@ -130,12 +146,14 @@ export default defineComponent({
     async function fetchData() {
       loading.value = true
       try {
-        const [runRes, resultsRes] = await Promise.all([
+        const [runRes, resultsRes, reportRes] = await Promise.all([
           api.get<TestRun>(`/runs/${runId.value}`),
           api.get<RunResult[]>(`/runs/${runId.value}/results`),
+          api.get(`/runs/${runId.value}/report`),
         ])
         run.value = runRes.data
         results.value = resultsRes.data
+        report.value = reportRes.data
       } catch { /* 拦截器处理 */ }
       finally { loading.value = false }
     }
@@ -150,7 +168,7 @@ export default defineComponent({
 
     onMounted(fetchData)
 
-    return { run, results, groupedResults, loading, hasPending, passRate, resultColumns, statusColor, resultStatusColor, statusText, formatTime, goBack, markResult }
+    return { run, results, groupedResults, loading, hasPending, passRate, report, resultColumns, statusColor, resultStatusColor, statusText, formatTime, goBack, markResult }
   },
 })
 </script>
