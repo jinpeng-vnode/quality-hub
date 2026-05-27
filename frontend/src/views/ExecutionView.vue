@@ -40,9 +40,7 @@
             </span>
           </template>
           <template v-if="column.key === 'createdAt'">
-            <a-tooltip :title="text">
-              <span>{{ formatTime(text) }}</span>
-            </a-tooltip>
+            {{ formatTime(text) }}
           </template>
           <template v-if="column.key === 'action'">
             <a-button type="link" size="small" @click="viewDetail(record)" aria-label="查看详情">
@@ -68,10 +66,10 @@
           <a-tag :color="statusColor(currentRun.status)">{{ statusText(currentRun.status) }}</a-tag>
         </a-descriptions-item>
         <a-descriptions-item label="通过率">
-          {{ currentRun.total ? ((currentRun.passed / currentRun.total) * 100).toFixed(1) : '0.0' }}%
+          {{ passRate(currentRun) }}%
         </a-descriptions-item>
-        <a-descriptions-item label="开始时间">{{ currentRun.startedAt || '-' }}</a-descriptions-item>
-        <a-descriptions-item label="结束时间">{{ currentRun.finishedAt || '-' }}</a-descriptions-item>
+        <a-descriptions-item label="开始时间">{{ formatTime(currentRun.startedAt) }}</a-descriptions-item>
+        <a-descriptions-item label="结束时间">{{ formatTime(currentRun.finishedAt) }}</a-descriptions-item>
       </a-descriptions>
 
       <a-divider>用例结果</a-divider>
@@ -79,8 +77,21 @@
         <a-table :dataSource="runResults" :columns="resultColumns" rowKey="id" size="small" :pagination="false"
           :expandedRowKeys="expandedKeys" @expand="onExpand">
           <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'caseTitle'">
+              {{ caseMap[record.caseId] || record.caseId.substring(0, 8) }}
+            </template>
             <template v-if="column.key === 'status'">
               <a-tag :color="resultStatusColor(record.status)">{{ statusText(record.status) }}</a-tag>
+            </template>
+            <template v-if="column.key === 'action'">
+              <a-space v-if="record.status === 'pending' && currentRun?.mode === 'manual'">
+                <a-button type="link" size="small" style="color: #52c41a" @click="markResult(record, 'passed')">
+                  <CheckOutlined /> 通过
+                </a-button>
+                <a-button type="link" size="small" danger @click="markResult(record, 'failed')">
+                  <CloseOutlined /> 失败
+                </a-button>
+              </a-space>
             </template>
           </template>
           <template #expandedRowRender="{ record }">
@@ -103,8 +114,8 @@
 import { defineComponent, ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { PlayCircleOutlined, EyeOutlined, DownOutlined } from '@ant-design/icons-vue'
-import type { TestRun, RunResult } from '../types'
+import { PlayCircleOutlined, EyeOutlined, DownOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons-vue'
+import type { TestRun, RunResult, TestCase } from '../types'
 import api from '../api'
 
 interface RunWithMode extends TestRun {
@@ -127,14 +138,15 @@ const columns = [
 ]
 
 const resultColumns = [
-  { title: '用例ID', dataIndex: 'caseId', key: 'caseId', width: 100 },
+  { title: '用例', dataIndex: 'caseId', key: 'caseTitle', width: 200 },
   { title: '状态', key: 'status', dataIndex: 'status', width: 80 },
   { title: '耗时(ms)', dataIndex: 'durationMs', key: 'durationMs', width: 80 },
   { title: '错误信息', dataIndex: 'errorMessage', key: 'errorMessage', ellipsis: true },
+  { title: '操作', key: 'action', width: 150 },
 ]
 
 function statusColor(s: string) {
-  const map: Record<string, string> = { pending: 'default', running: 'processing', passed: 'success', failed: 'error', error: 'warning' }
+  const map: Record<string, string> = { pending: 'default', running: 'processing', passed: 'success', failed: 'error', error: 'warning', completed: 'cyan' }
   return map[s] || 'default'
 }
 function resultStatusColor(s: string) {
@@ -142,17 +154,20 @@ function resultStatusColor(s: string) {
   return map[s] || 'default'
 }
 function statusText(s: string) {
-  const map: Record<string, string> = { pending: '等待中', running: '执行中', passed: '通过', failed: '失败', error: '异常', skipped: '跳过' }
+  const map: Record<string, string> = { pending: '等待中', running: '执行中', passed: '通过', failed: '失败', error: '异常', skipped: '跳过', completed: '已完成' }
   return map[s] || s
 }
-function formatTime(t: string | null): string {
+function formatTime(t: string | null | undefined): string {
   if (!t) return '-'
-  return t.replace(/(\d{4}-\d{2}-\d{2})\s(\d{2}:\d{2}):\d{2}.*/, '$1 $2')
+  const d = new Date(t)
+  if (isNaN(d.getTime())) return t
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 export default defineComponent({
   name: 'ExecutionView',
-  components: { PlayCircleOutlined, EyeOutlined, DownOutlined },
+  components: { PlayCircleOutlined, EyeOutlined, DownOutlined, CheckOutlined, CloseOutlined },
   setup() {
     const route = useRoute()
     const projectId = computed(() => route.params.projectId as string)
@@ -165,6 +180,8 @@ export default defineComponent({
     const showDetail = ref(false)
     const detailLoading = ref(false)
     const expandedKeys = ref<string[]>([])
+    // 用例ID -> 标题映射
+    const caseMap = ref<Record<string, string>>({})
 
     function copyId(id: string) {
       navigator.clipboard.writeText(id)
@@ -173,6 +190,22 @@ export default defineComponent({
 
     function onExpand(expanded: boolean, record: RunResultWithLog) {
       expandedKeys.value = expanded ? [record.id as unknown as string] : []
+    }
+
+    // 通过率排除 skipped
+    function passRate(run: RunWithMode): string {
+      const effective = run.total - (run.skipped || 0)
+      if (effective <= 0) return '0.0'
+      return ((run.passed / effective) * 100).toFixed(1)
+    }
+
+    async function fetchCases() {
+      try {
+        const { data } = await api.get<TestCase[]>('/cases', { params: { projectId: projectId.value } })
+        const map: Record<string, string> = {}
+        data.forEach(c => { map[c.id as unknown as string] = c.title })
+        caseMap.value = map
+      } catch { /* 拦截器处理 */ }
     }
 
     async function fetchRuns() {
@@ -206,9 +239,20 @@ export default defineComponent({
       finally { detailLoading.value = false }
     }
 
-    onMounted(fetchRuns)
+    async function markResult(record: RunResultWithLog, status: 'passed' | 'failed') {
+      if (!currentRun.value) return
+      try {
+        await api.put(`/runs/${currentRun.value.id}/results/${record.id}`, { status, errorMessage: '', durationMs: 0 })
+        message.success(`已标记为${status === 'passed' ? '通过' : '失败'}`)
+        // 刷新详情
+        viewDetail(currentRun.value)
+        fetchRuns()
+      } catch { /* 拦截器处理 */ }
+    }
 
-    return { runs, runResults, currentRun, loading, triggering, showDetail, detailLoading, expandedKeys, columns, resultColumns, statusColor, resultStatusColor, statusText, formatTime, copyId, fetchRuns, handleTrigger, viewDetail, onExpand }
+    onMounted(() => { fetchCases(); fetchRuns() })
+
+    return { runs, runResults, currentRun, loading, triggering, showDetail, detailLoading, expandedKeys, caseMap, columns, resultColumns, statusColor, resultStatusColor, statusText, formatTime, passRate, copyId, fetchRuns, handleTrigger, viewDetail, onExpand, markResult }
   },
 })
 </script>

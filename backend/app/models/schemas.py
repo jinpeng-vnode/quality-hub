@@ -33,6 +33,7 @@ class RunStatus(str, Enum):
     failed = "failed"
     error = "error"
     skipped = "skipped"
+    completed = "completed"
 
 
 # === 项目 ===

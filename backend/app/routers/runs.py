@@ -258,8 +258,13 @@ async def _recalculate_run(db, run_id: str) -> None:
 
     now = datetime.now(timezone.utc).isoformat()
     if pending == 0:
-        # 全部完成
-        run_status = "failed" if failed > 0 else "passed"
+        # 全部完成：有失败则 failed，全 skipped 则 completed，否则 passed
+        if failed > 0:
+            run_status = "failed"
+        elif passed == 0 and skipped > 0:
+            run_status = "completed"
+        else:
+            run_status = "passed"
         await db.execute(
             "UPDATE runs SET status = ?, passed = ?, failed = ?, skipped = ?, finished_at = ? WHERE id = ?",
             (run_status, passed, failed, skipped, now, run_id),
