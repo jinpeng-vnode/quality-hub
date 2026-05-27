@@ -1,11 +1,12 @@
 <template>
-  <a-config-provider :theme="theme">
+  <a-config-provider :theme="theme" :locale="zhCN">
     <MainLayout />
   </a-config-provider>
 </template>
 
 <script lang="ts">
 import { defineComponent } from 'vue'
+import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import MainLayout from './layouts/MainLayout.vue'
 
 const theme = {
@@ -30,7 +31,7 @@ export default defineComponent({
   name: 'App',
   components: { MainLayout },
   setup() {
-    return { theme }
+    return { theme, zhCN }
   },
 })
 </script>
