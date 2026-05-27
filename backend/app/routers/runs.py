@@ -168,6 +168,41 @@ async def delete_run(run_id: str):
         await db.close()
 
 
+@router.post("/runs/{run_id}/cancel", response_model=RunOut)
+async def cancel_run(run_id: str):
+    """取消执行中的 run，将 running 改为 error，pending 的 results 改为 skipped"""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM runs WHERE id = ?", (run_id,))
+        row = await cursor.fetchone()
+        if not row:
+            raise NotFoundException("执行记录不存在")
+        if row["status"] != "running":
+            raise ForbiddenException("仅执行中的记录可取消")
+
+        now = datetime.now(timezone.utc).isoformat()
+        await db.execute(
+            "UPDATE run_results SET status = 'skipped' WHERE run_id = ? AND status = 'pending'",
+            (run_id,),
+        )
+        # 重新统计
+        cursor = await db.execute("SELECT status FROM run_results WHERE run_id = ?", (run_id,))
+        rows = await cursor.fetchall()
+        passed = sum(1 for r in rows if r["status"] == "passed")
+        failed = sum(1 for r in rows if r["status"] == "failed")
+        skipped = sum(1 for r in rows if r["status"] == "skipped")
+        await db.execute(
+            "UPDATE runs SET status = 'error', passed = ?, failed = ?, skipped = ?, finished_at = ? WHERE id = ?",
+            (passed, failed, skipped, now, run_id),
+        )
+        await db.commit()
+        logger.info(f"取消执行记录: {run_id}")
+        cursor = await db.execute("SELECT * FROM runs WHERE id = ?", (run_id,))
+        return _row_to_run(await cursor.fetchone())
+    finally:
+        await db.close()
+
+
 @router.get("/runs/{run_id}/results", response_model=list[RunResultOut])
 async def get_run_results(run_id: str):
     """获取执行结果明细（含用例标题和功能点信息）"""
