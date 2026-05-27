@@ -19,16 +19,17 @@
       <a-empty v-if="!loading && features.length === 0" description="暂无功能点" />
       <a-table v-else :dataSource="features" :columns="columns" rowKey="id" :pagination="{ pageSize: 20 }" size="middle">
         <template #bodyCell="{ column, record, text }">
-          <template v-if="column.key === 'id'">
-            <a-tooltip :title="text">
-              <span class="id-cell" @click="copyId(text)">{{ String(text).substring(0, 8) }}</span>
-            </a-tooltip>
+          <template v-if="column.key === 'title'">
+            <a @click="goToCases(record.id)">{{ text }}</a>
           </template>
           <template v-if="column.key === 'status'">
             <a-tag :color="statusColor(record.status)">{{ statusText(record.status) }}</a-tag>
           </template>
           <template v-if="column.key === 'action'">
             <a-space :size="8">
+              <a-button type="link" size="small" @click="goToCases(record.id)" aria-label="查看用例">
+                <template #icon><EyeOutlined /></template>
+              </a-button>
               <a-button type="link" size="small" @click="editFeature(record)" aria-label="编辑">
                 <template #icon><EditOutlined /></template>
               </a-button>
@@ -52,13 +53,6 @@
         <a-form-item label="描述">
           <a-textarea v-model:value="form.description" :rows="3" />
         </a-form-item>
-        <a-form-item label="来源">
-          <a-select v-model:value="form.source" placeholder="选择来源" allowClear>
-            <a-select-option value="prd">PRD</a-select-option>
-            <a-select-option value="issue">Issue</a-select-option>
-            <a-select-option value="manual">手动</a-select-option>
-          </a-select>
-        </a-form-item>
       </a-form>
     </a-modal>
   </div>
@@ -66,19 +60,17 @@
 
 <script lang="ts">
 import { defineComponent, ref, reactive, onMounted, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons-vue'
 import type { Feature } from '../types'
 import api from '../api'
 
 const columns = [
-  { title: 'ID', dataIndex: 'id', key: 'id', width: 100, fixed: 'left' as const },
   { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true },
-  { title: '来源', dataIndex: 'source', key: 'source', width: 100 },
   { title: '状态', key: 'status', dataIndex: 'status', width: 100 },
   { title: '用例数', dataIndex: 'caseCount', key: 'caseCount', width: 80 },
-  { title: '操作', key: 'action', width: 120, fixed: 'right' as const },
+  { title: '操作', key: 'action', width: 150, fixed: 'right' as const },
 ]
 
 function statusColor(s: string) {
@@ -90,9 +82,10 @@ function statusText(s: string) {
 
 export default defineComponent({
   name: 'FeatureView',
-  components: { PlusOutlined, EditOutlined, DeleteOutlined },
+  components: { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined },
   setup() {
     const route = useRoute()
+    const router = useRouter()
     const projectId = computed(() => route.params.projectId as string)
 
     const features = ref<Feature[]>([])
@@ -100,11 +93,10 @@ export default defineComponent({
     const showModal = ref(false)
     const editingFeature = ref<Feature | null>(null)
     const filters = reactive({ status: undefined as string | undefined })
-    const form = reactive({ title: '', description: '', source: undefined as string | undefined })
+    const form = reactive({ title: '', description: '' })
 
-    function copyId(id: string) {
-      navigator.clipboard.writeText(id)
-      message.success('已复制')
+    function goToCases(featureId: number) {
+      router.push({ name: 'Cases', params: { projectId: projectId.value }, query: { featureId: String(featureId) } })
     }
 
     async function fetchFeatures() {
@@ -122,7 +114,6 @@ export default defineComponent({
       editingFeature.value = record
       form.title = record.title
       form.description = record.description || ''
-      form.source = record.source || undefined
       showModal.value = true
     }
 
@@ -130,7 +121,6 @@ export default defineComponent({
       editingFeature.value = null
       form.title = ''
       form.description = ''
-      form.source = undefined
     }
 
     async function handleSubmit() {
@@ -143,7 +133,7 @@ export default defineComponent({
           await api.put(`/features/${editingFeature.value.id}`, { title: form.title, description: form.description })
           message.success('更新成功')
         } else {
-          await api.post('/features', { projectId: projectId.value, title: form.title, description: form.description, source: form.source })
+          await api.post('/features', { projectId: projectId.value, title: form.title, description: form.description })
           message.success('创建成功')
         }
         showModal.value = false
@@ -162,7 +152,7 @@ export default defineComponent({
 
     onMounted(fetchFeatures)
 
-    return { features, loading, showModal, editingFeature, filters, form, columns, statusColor, statusText, copyId, editFeature, resetForm, handleSubmit, deleteFeature, fetchFeatures }
+    return { features, loading, showModal, editingFeature, filters, form, columns, statusColor, statusText, goToCases, editFeature, resetForm, handleSubmit, deleteFeature, fetchFeatures }
   },
 })
 </script>

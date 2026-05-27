@@ -11,6 +11,7 @@ const router = createRouter({
         { path: 'features', name: 'Features', component: () => import('../views/FeatureView.vue'), meta: { title: '功能点管理' } },
         { path: 'cases', name: 'Cases', component: () => import('../views/TestCaseView.vue'), meta: { title: '测试用例' } },
         { path: 'runs', name: 'Runs', component: () => import('../views/ExecutionView.vue'), meta: { title: '执行管理' } },
+        { path: 'runs/:runId', name: 'RunDetail', component: () => import('../views/RunDetailView.vue'), meta: { title: '执行详情' } },
         { path: 'report', name: 'Report', component: () => import('../views/ReportView.vue'), meta: { title: '报告看板' } },
       ],
     },

@@ -73,13 +73,16 @@
           </a-select>
         </a-form-item>
         <a-form-item label="类型">
-          <a-select v-model:value="form.caseType">
-            <a-select-option value="manual">手动</a-select-option>
-            <a-select-option value="e2e">E2E</a-select-option>
-          </a-select>
+          <a-radio-group v-model:value="form.caseType">
+            <a-radio-button value="manual">手动测试</a-radio-button>
+            <a-radio-button value="e2e">E2E 脚本</a-radio-button>
+          </a-radio-group>
         </a-form-item>
         <a-form-item v-if="form.caseType === 'e2e'" label="Playwright 脚本">
-          <a-textarea v-model:value="form.midsceneScript" :rows="8" placeholder="输入 Python Playwright 测试脚本代码" style="font-family: monospace;" />
+          <p style="color: rgba(0,0,0,0.45); margin-bottom: 8px;">编写 Python Playwright 自动化测试脚本，执行时将自动运行</p>
+          <a-textarea v-model:value="form.midsceneScript" :rows="15"
+            placeholder="import asyncio&#10;from playwright.async_api import async_playwright&#10;&#10;async def test_example():&#10;    async with async_playwright() as p:&#10;        browser = await p.chromium.launch()&#10;        page = await browser.new_page()&#10;        await page.goto('http://localhost:3000')&#10;        # 在此编写测试逻辑&#10;        await browser.close()&#10;&#10;asyncio.run(test_example())"
+            style="font-family: monospace; font-size: 13px;" />
         </a-form-item>
       </a-form>
       <template #footer>
@@ -229,7 +232,15 @@ export default defineComponent({
       } catch { /* 拦截器处理 */ }
     }
 
-    onMounted(() => { fetchFeatures(); fetchCases() })
+    onMounted(() => {
+      fetchFeatures()
+      // 从 URL query 读取 featureId 自动筛选
+      const queryFeatureId = route.query.featureId
+      if (queryFeatureId) {
+        filters.featureId = Number(queryFeatureId)
+      }
+      fetchCases()
+    })
 
     return { testCases, features, loading, showDrawer, editingCase, filters, form, columns, priorityColor, priorityText, typeColor, typeText, copyId, openCreate, editCase, resetForm, handleSubmit, deleteCase, fetchCases }
   },
