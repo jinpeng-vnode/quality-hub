@@ -160,7 +160,7 @@ async def update_case(case_id: str, body: CaseUpdate):
             params.append(body.midscene_script)
 
         if updates:
-            updates.append("updated_at = datetime('now')")
+            updates.append("updated_at = datetime('now', '+8 hours')")
             params.append(case_id)
             await db.execute(f"UPDATE cases SET {', '.join(updates)} WHERE id = ?", params)
             await db.commit()

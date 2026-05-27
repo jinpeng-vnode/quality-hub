@@ -94,7 +94,7 @@ async def update_project(project_id: str, body: ProjectUpdate):
             params.append(body.description)
 
         if updates:
-            updates.append("updated_at = datetime('now')")
+            updates.append("updated_at = datetime('now', '+8 hours')")
             params.append(project_id)
             await db.execute(f"UPDATE projects SET {', '.join(updates)} WHERE id = ?", params)
             await db.commit()

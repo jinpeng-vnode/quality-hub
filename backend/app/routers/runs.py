@@ -8,7 +8,10 @@ import asyncio
 import shutil
 import tempfile
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+
+# 上海时区 UTC+8
+_SHANGHAI_TZ = timezone(timedelta(hours=8))
 from pathlib import Path
 
 from fastapi import APIRouter, Query
@@ -61,7 +64,7 @@ async def create_run(body: RunCreate):
         cases = [dict(r) for r in await cursor.fetchall()]
 
         run_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(_SHANGHAI_TZ).isoformat()
         await db.execute(
             "INSERT INTO runs (id, project_id, status, mode, total, started_at) VALUES (?, ?, ?, ?, ?, ?)",
             (run_id, body.project_id, "running", body.mode, len(cases), now),
@@ -168,6 +171,41 @@ async def delete_run(run_id: str):
         await db.close()
 
 
+@router.post("/runs/{run_id}/cancel", response_model=RunOut)
+async def cancel_run(run_id: str):
+    """取消执行中的 run，将 running 改为 error，pending 的 results 改为 skipped"""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM runs WHERE id = ?", (run_id,))
+        row = await cursor.fetchone()
+        if not row:
+            raise NotFoundException("执行记录不存在")
+        if row["status"] != "running":
+            raise ForbiddenException("仅执行中的记录可取消")
+
+        now = datetime.now(_SHANGHAI_TZ).isoformat()
+        await db.execute(
+            "UPDATE run_results SET status = 'skipped' WHERE run_id = ? AND status = 'pending'",
+            (run_id,),
+        )
+        # 重新统计
+        cursor = await db.execute("SELECT status FROM run_results WHERE run_id = ?", (run_id,))
+        rows = await cursor.fetchall()
+        passed = sum(1 for r in rows if r["status"] == "passed")
+        failed = sum(1 for r in rows if r["status"] == "failed")
+        skipped = sum(1 for r in rows if r["status"] == "skipped")
+        await db.execute(
+            "UPDATE runs SET status = 'error', passed = ?, failed = ?, skipped = ?, finished_at = ? WHERE id = ?",
+            (passed, failed, skipped, now, run_id),
+        )
+        await db.commit()
+        logger.info(f"取消执行记录: {run_id}")
+        cursor = await db.execute("SELECT * FROM runs WHERE id = ?", (run_id,))
+        return _row_to_run(await cursor.fetchone())
+    finally:
+        await db.close()
+
+
 @router.get("/runs/{run_id}/results", response_model=list[RunResultOut])
 async def get_run_results(run_id: str):
     """获取执行结果明细（含用例标题和功能点信息）"""
@@ -201,6 +239,54 @@ async def get_run_results(run_id: str):
         await db.close()
 
 
+@router.get("/runs/{run_id}/report")
+async def get_run_report(run_id: str):
+    """获取单次执行的统计报告（通过数、失败数、跳过数、通过率、按功能点分组）"""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM runs WHERE id = ?", (run_id,))
+        row = await cursor.fetchone()
+        if not row:
+            raise NotFoundException("执行记录不存在")
+
+        cursor = await db.execute(
+            """SELECT rr.status, f.title as feature_title
+               FROM run_results rr
+               LEFT JOIN cases c ON rr.case_id = c.id
+               LEFT JOIN features f ON c.feature_id = f.id
+               WHERE rr.run_id = ?""",
+            (run_id,),
+        )
+        results = await cursor.fetchall()
+        passed = sum(1 for r in results if r["status"] == "passed")
+        failed = sum(1 for r in results if r["status"] == "failed")
+        skipped = sum(1 for r in results if r["status"] == "skipped")
+        total = len(results)
+        pass_rate = round(passed / total * 100, 1) if total > 0 else 0.0
+
+        # 按功能点分组统计
+        groups: dict[str, dict] = {}
+        for r in results:
+            ft = r["feature_title"] or "未分类"
+            if ft not in groups:
+                groups[ft] = {"featureTitle": ft, "passed": 0, "failed": 0, "skipped": 0, "total": 0}
+            groups[ft]["total"] += 1
+            if r["status"] in ("passed", "failed", "skipped"):
+                groups[ft][r["status"]] += 1
+
+        return {
+            "runId": run_id,
+            "total": total,
+            "passed": passed,
+            "failed": failed,
+            "skipped": skipped,
+            "passRate": pass_rate,
+            "groups": list(groups.values()),
+        }
+    finally:
+        await db.close()
+
+
 # === 脚本执行引擎 ===
 
 async def _execute_script_run(run_id: str, case_scripts: list[dict]) -> None:
@@ -218,9 +304,9 @@ async def _execute_script_run(run_id: str, case_scripts: list[dict]) -> None:
                 await db.commit()
                 continue
 
-            start = datetime.now(timezone.utc)
+            start = datetime.now(_SHANGHAI_TZ)
             status, log = await _run_single_script(script)
-            duration = int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
+            duration = int((datetime.now(_SHANGHAI_TZ) - start).total_seconds() * 1000)
             error_msg = log if status == "failed" else ""
             await db.execute(
                 "UPDATE run_results SET status = ?, error_message = ?, duration_ms = ?, log = ? WHERE id = ?",
@@ -232,7 +318,7 @@ async def _execute_script_run(run_id: str, case_scripts: list[dict]) -> None:
         await _recalculate_run(db, run_id)
     except Exception as e:
         logger.error(f"脚本执行异常 run={run_id}: {e}")
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(_SHANGHAI_TZ).isoformat()
         await db.execute(
             "UPDATE runs SET status = 'error', finished_at = ? WHERE id = ?", (now, run_id),
         )
@@ -253,13 +339,13 @@ async def _run_single_script(script: str) -> tuple[str, str]:
             stderr=asyncio.subprocess.PIPE,
             cwd=tmp_dir,
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
         log = (stdout.decode() + "\n" + stderr.decode()).strip()
         status = "passed" if proc.returncode == 0 else "failed"
         return status, log
     except asyncio.TimeoutError:
         proc.kill()  # type: ignore
-        return "failed", "执行超时（60s）"
+        return "failed", "执行超时（15s）"
     except Exception as e:
         return "failed", f"执行异常: {e}"
     finally:
@@ -275,7 +361,7 @@ async def _recalculate_run(db, run_id: str) -> None:
     skipped = sum(1 for r in rows if r["status"] == "skipped")
     pending = sum(1 for r in rows if r["status"] == "pending")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(_SHANGHAI_TZ).isoformat()
     if pending == 0:
         # 全部完成：有失败则 failed，全 skipped 则 completed，否则 passed
         if failed > 0:
