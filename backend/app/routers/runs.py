@@ -69,6 +69,9 @@ async def create_run(body: RunCreate):
         if body.case_ids:
             placeholders = ",".join("?" * len(body.case_ids))
             cursor = await db.execute(f"SELECT id, midscene_script FROM cases WHERE id IN ({placeholders})", body.case_ids)
+        elif body.feature_ids:
+            placeholders = ",".join("?" * len(body.feature_ids))
+            cursor = await db.execute(f"SELECT id, midscene_script FROM cases WHERE feature_id IN ({placeholders})", body.feature_ids)
         else:
             cursor = await db.execute(
                 "SELECT c.id, c.midscene_script FROM cases c JOIN features f ON c.feature_id = f.id WHERE f.project_id = ?",
@@ -219,6 +222,82 @@ async def cancel_run(run_id: str):
         await db.close()
 
 
+@router.post("/runs/{run_id}/retry/{result_id}", response_model=RunResultOut)
+async def retry_single_result(run_id: str, result_id: str):
+    """重新执行单条用例"""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM runs WHERE id = ?", (run_id,))
+        run_row = await cursor.fetchone()
+        if not run_row:
+            raise NotFoundException("执行记录不存在")
+
+        cursor = await db.execute(
+            "SELECT rr.*, c.midscene_script FROM run_results rr JOIN cases c ON rr.case_id = c.id WHERE rr.id = ? AND rr.run_id = ?",
+            (result_id, run_id),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise NotFoundException("执行结果不存在")
+
+        script = row["midscene_script"] or ""
+        if not script:
+            raise ForbiddenException("该用例无脚本，无法执行")
+
+        # 重置状态为 pending
+        await db.execute("UPDATE run_results SET status = 'pending', error_message = '', log = '', screenshots = '[]', duration_ms = 0 WHERE id = ?", (result_id,))
+        # 将 run 状态改回 running
+        await db.execute("UPDATE runs SET status = 'running', finished_at = NULL WHERE id = ?", (run_id,))
+        await db.commit()
+
+        # 后台执行
+        asyncio.create_task(_execute_single_retry(run_id, result_id, script, run_row["mode"]))
+
+        cursor = await db.execute(
+            """SELECT rr.*, c.title as case_title, c.feature_id, f.title as feature_title
+               FROM run_results rr LEFT JOIN cases c ON rr.case_id = c.id LEFT JOIN features f ON c.feature_id = f.id
+               WHERE rr.id = ?""", (result_id,))
+        r = await cursor.fetchone()
+        screenshots_raw = r["screenshots"] if "screenshots" in r.keys() else "[]"
+        try:
+            screenshots = json.loads(screenshots_raw) if screenshots_raw else []
+        except (json.JSONDecodeError, TypeError):
+            screenshots = []
+        return RunResultOut(
+            id=r["id"], runId=r["run_id"], caseId=r["case_id"],
+            caseTitle=r["case_title"] or "", featureId=r["feature_id"] or "",
+            featureTitle=r["feature_title"] or "未分类",
+            status=r["status"], errorMessage=r["error_message"] or None,
+            durationMs=r["duration_ms"], log=r["log"] if "log" in r.keys() else "",
+            screenshots=screenshots,
+        )
+    finally:
+        await db.close()
+
+
+async def _execute_single_retry(run_id: str, result_id: str, script: str, mode: str) -> None:
+    """后台重试单条用例"""
+    db = await get_db()
+    try:
+        start = datetime.now(_SHANGHAI_TZ)
+        status, log, screenshots = await _run_single_script(script, timeout=60)
+        duration = int((datetime.now(_SHANGHAI_TZ) - start).total_seconds() * 1000)
+        error_msg = log if status == "failed" else ""
+        await db.execute(
+            "UPDATE run_results SET status = ?, error_message = ?, duration_ms = ?, log = ?, screenshots = ? WHERE id = ?",
+            (status, error_msg, duration, log, json.dumps(screenshots), result_id),
+        )
+        await db.commit()
+        await _recalculate_run(db, run_id)
+    except Exception as e:
+        logger.error(f"重试异常 result={result_id}: {e}")
+        await db.execute("UPDATE run_results SET status = 'failed', error_message = ? WHERE id = ?", (str(e), result_id))
+        await db.commit()
+        await _recalculate_run(db, run_id)
+    finally:
+        await db.close()
+
+
 @router.get("/runs/{run_id}/results", response_model=list[RunResultOut])
 async def get_run_results(run_id: str):
     """获取执行结果明细（含用例标题和功能点信息）"""
@@ -347,13 +426,17 @@ async def _execute_script_run(run_id: str, case_scripts: list[dict], timeout: in
 
 
 async def _run_single_script(script: str, timeout: int = 60) -> tuple[str, str, list[str]]:
-    """执行单条脚本，返回 (status, log, screenshots)"""
+    """执行单条脚本，返回 (status, log, screenshots)
+    自动在脚本末尾注入截图代码：如果脚本中使用了 playwright 且未手动截图，则自动截图
+    """
     tmp_dir = tempfile.mkdtemp(prefix="qh_run_")
     script_path = Path(tmp_dir) / "test_script.py"
     screenshot_dir = Path(tmp_dir) / "screenshots"
     screenshot_dir.mkdir()
     try:
-        script_path.write_text(script, encoding="utf-8")
+        # 如果脚本使用 playwright 且没有手动调用 screenshot，注入自动截图
+        final_script = _inject_auto_screenshot(script, str(screenshot_dir))
+        script_path.write_text(final_script, encoding="utf-8")
         # 通过环境变量告诉脚本截图保存位置
         env = {**os.environ, "QH_SCREENSHOT_DIR": str(screenshot_dir)}
         proc = await asyncio.create_subprocess_exec(
@@ -377,6 +460,36 @@ async def _run_single_script(script: str, timeout: int = 60) -> tuple[str, str, 
         return "failed", f"执行异常: {e}", []
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _inject_auto_screenshot(script: str, screenshot_dir: str) -> str:
+    """如果脚本使用 playwright 但没有手动截图，在 browser.close() 前注入自动截图"""
+    if "playwright" not in script:
+        return script
+    if ".screenshot(" in script:
+        # 已有手动截图，不注入
+        return script
+    # 注入：在脚本末尾添加自动截图逻辑（通过 wrapper 方式）
+    wrapper = f'''
+import os as _os
+_screenshot_dir = "{screenshot_dir}"
+
+# 自动截图：monkey-patch browser.close 在关闭前截图
+import playwright.sync_api as _pw_module
+_original_close = _pw_module.Browser.close
+def _auto_close(self):
+    try:
+        for ctx in self.contexts:
+            for pg in ctx.pages:
+                pg.screenshot(path=_os.path.join(_screenshot_dir, "auto_final.png"))
+                break
+            break
+    except Exception:
+        pass
+    _original_close(self)
+_pw_module.Browser.close = _auto_close
+'''
+    return wrapper + "\n" + script
 
 
 def _collect_screenshots(screenshot_dir: Path) -> list[str]:

@@ -2,7 +2,9 @@
   <div class="execution-view">
     <!-- 操作栏 -->
     <div class="toolbar">
-      <span></span>
+      <a-space>
+        <a-select v-model:value="selectedFeatureIds" mode="multiple" placeholder="按功能点执行（不选则全部）" style="min-width: 280px;" allowClear :options="featureOptions" />
+      </a-space>
       <a-dropdown>
         <template #overlay>
           <a-menu @click="handleTrigger">
@@ -55,11 +57,11 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, computed } from 'vue'
+import { defineComponent, ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { PlayCircleOutlined, DownOutlined } from '@ant-design/icons-vue'
-import type { TestRun } from '../types'
+import type { TestRun, Feature } from '../types'
 import api from '../api'
 
 const columns = [
@@ -96,8 +98,19 @@ export default defineComponent({
     const projectId = computed(() => route.params.projectId as string)
 
     const runs = ref<TestRun[]>([])
+    const features = ref<Feature[]>([])
+    const selectedFeatureIds = ref<string[]>([])
     const loading = ref(false)
     const triggering = ref(false)
+
+    const featureOptions = computed(() => features.value.map(f => ({ label: `${f.title} (${f.caseCount})`, value: f.id })))
+
+    async function fetchFeatures() {
+      try {
+        const { data } = await api.get<Feature[]>('/features', { params: { projectId: projectId.value } })
+        features.value = data
+      } catch { /* */ }
+    }
 
     async function fetchRuns() {
       loading.value = true
@@ -111,9 +124,14 @@ export default defineComponent({
     async function handleTrigger({ key }: { key: string }) {
       triggering.value = true
       try {
-        await api.post('/runs', { projectId: projectId.value, caseIds: [], mode: key })
+        const payload: Record<string, unknown> = { projectId: projectId.value, mode: key }
+        if (selectedFeatureIds.value.length > 0) {
+          payload.featureIds = selectedFeatureIds.value
+        }
+        await api.post('/runs', payload)
         message.success(`已触发${key === 'script' ? '脚本' : '手动'}执行`)
         fetchRuns()
+        startAutoRefresh()
       } catch { /* 拦截器处理 */ }
       finally { triggering.value = false }
     }
@@ -126,9 +144,29 @@ export default defineComponent({
       } catch { /* 拦截器处理 */ }
     }
 
-    onMounted(fetchRuns)
+    // 自动刷新：有 running 状态时每 5 秒刷新
+    let refreshTimer: ReturnType<typeof setInterval> | null = null
+    function startAutoRefresh() {
+      stopAutoRefresh()
+      refreshTimer = setInterval(async () => {
+        await fetchRuns()
+        const hasRunning = runs.value.some(r => r.status === 'running')
+        if (!hasRunning) stopAutoRefresh()
+      }, 5000)
+    }
+    function stopAutoRefresh() {
+      if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null }
+    }
 
-    return { runs, loading, triggering, projectId, columns, statusColor, statusText, formatTime, fetchRuns, handleTrigger, cancelRun }
+    onMounted(() => {
+      fetchFeatures()
+      fetchRuns().then(() => {
+        if (runs.value.some(r => r.status === 'running')) startAutoRefresh()
+      })
+    })
+    onUnmounted(stopAutoRefresh)
+
+    return { runs, loading, triggering, projectId, columns, selectedFeatureIds, featureOptions, statusColor, statusText, formatTime, fetchRuns, handleTrigger, cancelRun }
   },
 })
 </script>

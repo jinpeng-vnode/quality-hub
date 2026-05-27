@@ -129,6 +129,7 @@ class CaseOut(BaseModel):
 class RunCreate(BaseModel):
     project_id: str = Field(..., alias="projectId")
     case_ids: list[str] = Field(default_factory=list, alias="caseIds")
+    feature_ids: list[str] = Field(default_factory=list, alias="featureIds")
     mode: str = Field(default="manual")  # "manual" | "script"
     timeout: int = Field(default=60, ge=5, le=300)  # 单条用例超时秒数，默认60s
     model_config = {"populate_by_name": True}

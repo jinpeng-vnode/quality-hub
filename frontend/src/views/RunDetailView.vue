@@ -58,12 +58,17 @@
               <a-tag :color="resultStatusColor(record.status)">{{ statusText(record.status) }}</a-tag>
             </template>
             <template v-if="column.key === 'action'">
-              <a-space v-if="record.status === 'pending' && run?.mode === 'manual'">
-                <a-button type="primary" size="small" @click="markResult(record, 'passed')">
-                  <CheckOutlined /> 通过
-                </a-button>
-                <a-button size="small" danger @click="markResult(record, 'failed')">
-                  <CloseOutlined /> 失败
+              <a-space>
+                <template v-if="record.status === 'pending' && run?.mode === 'manual'">
+                  <a-button type="primary" size="small" @click="markResult(record, 'passed')">
+                    <CheckOutlined /> 通过
+                  </a-button>
+                  <a-button size="small" danger @click="markResult(record, 'failed')">
+                    <CloseOutlined /> 失败
+                  </a-button>
+                </template>
+                <a-button v-if="record.status !== 'pending' && run?.mode === 'script'" size="small" @click="retryResult(record)" :loading="record._retrying">
+                  <ReloadOutlined /> 重试
                 </a-button>
               </a-space>
             </template>
@@ -93,7 +98,7 @@
 import { defineComponent, ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { CheckOutlined, CloseOutlined } from '@ant-design/icons-vue'
+import { CheckOutlined, CloseOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import type { TestRun, RunResult } from '../types'
 import api from '../api'
 
@@ -127,7 +132,7 @@ function formatTime(t: string | null | undefined): string {
 
 export default defineComponent({
   name: 'RunDetailView',
-  components: { CheckOutlined, CloseOutlined },
+  components: { CheckOutlined, CloseOutlined, ReloadOutlined },
   setup() {
     const route = useRoute()
     const router = useRouter()
@@ -181,9 +186,37 @@ export default defineComponent({
       } catch { /* 拦截器处理 */ }
     }
 
-    onMounted(fetchData)
+    async function retryResult(record: RunResult) {
+      try {
+        await api.post(`/runs/${runId.value}/retry/${record.id}`)
+        message.info('已触发重新执行')
+        // 启动自动刷新
+        startAutoRefresh()
+      } catch { /* 拦截器处理 */ }
+    }
 
-    return { run, results, groupedResults, loading, hasPending, passRate, report, resultColumns, statusColor, resultStatusColor, statusText, formatTime, goBack, markResult }
+    // 自动刷新：执行中时每 5 秒刷新一次
+    let refreshTimer: ReturnType<typeof setInterval> | null = null
+    function startAutoRefresh() {
+      stopAutoRefresh()
+      refreshTimer = setInterval(async () => {
+        await fetchData()
+        if (run.value && run.value.status !== 'running') {
+          stopAutoRefresh()
+        }
+      }, 5000)
+    }
+    function stopAutoRefresh() {
+      if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null }
+    }
+
+    onMounted(() => {
+      fetchData().then(() => {
+        if (run.value?.status === 'running') startAutoRefresh()
+      })
+    })
+
+    return { run, results, groupedResults, loading, hasPending, passRate, report, resultColumns, statusColor, resultStatusColor, statusText, formatTime, goBack, markResult, retryResult }
   },
 })
 </script>
