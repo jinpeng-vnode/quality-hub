@@ -253,13 +253,13 @@ async def _run_single_script(script: str) -> tuple[str, str]:
             stderr=asyncio.subprocess.PIPE,
             cwd=tmp_dir,
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
         log = (stdout.decode() + "\n" + stderr.decode()).strip()
         status = "passed" if proc.returncode == 0 else "failed"
         return status, log
     except asyncio.TimeoutError:
         proc.kill()  # type: ignore
-        return "failed", "执行超时（60s）"
+        return "failed", "执行超时（15s）"
     except Exception as e:
         return "failed", f"执行异常: {e}"
     finally:
