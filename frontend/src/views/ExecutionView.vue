@@ -22,6 +22,9 @@
       <a-empty v-if="!loading && runs.length === 0" description="暂无执行记录" />
       <a-table v-else :dataSource="runs" :columns="columns" rowKey="id" :pagination="{ pageSize: 20 }" size="middle">
         <template #bodyCell="{ column, record, text }">
+          <template v-if="column.key === 'id'">
+            <span :title="record.id">{{ record.id.slice(0, 8) }}</span>
+          </template>
           <template v-if="column.key === 'mode'">
             <a-tag :color="record.mode === 'script' ? 'purple' : 'blue'">{{ record.mode === 'script' ? '脚本' : '手动' }}</a-tag>
           </template>
@@ -38,7 +41,12 @@
             {{ formatTime(text) }}
           </template>
           <template v-if="column.key === 'action'">
-            <router-link :to="`/projects/${projectId}/runs/${record.id}`">查看详情</router-link>
+            <a-space>
+              <router-link :to="`/projects/${projectId}/runs/${record.id}`">查看详情</router-link>
+              <a-popconfirm v-if="record.status === 'running'" title="确认取消此执行？" @confirm="cancelRun(record.id)">
+                <a-button type="link" danger size="small">取消</a-button>
+              </a-popconfirm>
+            </a-space>
           </template>
         </template>
       </a-table>
@@ -55,12 +63,13 @@ import type { TestRun } from '../types'
 import api from '../api'
 
 const columns = [
+  { title: 'ID', key: 'id', dataIndex: 'id', width: 90 },
   { title: '执行模式', key: 'mode', dataIndex: 'mode', width: 100 },
   { title: '状态', key: 'status', dataIndex: 'status', width: 100 },
   { title: '用例总数', dataIndex: 'total', key: 'total', width: 90 },
   { title: '结果', key: 'result', width: 120 },
   { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 180 },
-  { title: '操作', key: 'action', width: 100, fixed: 'right' as const },
+  { title: '操作', key: 'action', width: 140, fixed: 'right' as const },
 ]
 
 function statusColor(s: string) {
@@ -109,9 +118,17 @@ export default defineComponent({
       finally { triggering.value = false }
     }
 
+    async function cancelRun(runId: string) {
+      try {
+        await api.post(`/runs/${runId}/cancel`)
+        message.success('已取消执行')
+        fetchRuns()
+      } catch { /* 拦截器处理 */ }
+    }
+
     onMounted(fetchRuns)
 
-    return { runs, loading, triggering, projectId, columns, statusColor, statusText, formatTime, fetchRuns, handleTrigger }
+    return { runs, loading, triggering, projectId, columns, statusColor, statusText, formatTime, fetchRuns, handleTrigger, cancelRun }
   },
 })
 </script>
