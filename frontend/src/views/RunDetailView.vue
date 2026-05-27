@@ -8,14 +8,18 @@
 
     <a-spin :spinning="loading">
       <!-- 执行概要 -->
-      <a-descriptions :column="3" bordered size="small" v-if="run" style="margin-bottom: 24px;">
+      <a-descriptions :column="{ xs: 2, sm: 3, md: 4 }" bordered size="small" v-if="run" style="margin-bottom: 24px;">
         <a-descriptions-item label="执行模式">
           <a-tag :color="run.mode === 'script' ? 'purple' : 'blue'">{{ run.mode === 'script' ? '脚本' : '手动' }}</a-tag>
         </a-descriptions-item>
         <a-descriptions-item label="用例总数">{{ run.total }}</a-descriptions-item>
+        <a-descriptions-item label="通过">
+          <span style="color: #52c41a; font-weight: 500;">{{ run.passed }}</span>
+        </a-descriptions-item>
+        <a-descriptions-item label="失败">
+          <span style="color: #ff4d4f; font-weight: 500;">{{ run.failed }}</span>
+        </a-descriptions-item>
         <a-descriptions-item label="通过率">{{ passRate }}%</a-descriptions-item>
-        <a-descriptions-item label="通过">{{ run.passed }}</a-descriptions-item>
-        <a-descriptions-item label="失败">{{ run.failed }}</a-descriptions-item>
         <a-descriptions-item label="创建时间">{{ formatTime(run.createdAt) }}</a-descriptions-item>
       </a-descriptions>
 
@@ -142,5 +146,5 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.run-detail-view { max-width: 1200px; }
+.run-detail-view { width: 100%; }
 </style>
