@@ -18,7 +18,6 @@ _SHANGHAI_TZ = timezone(timedelta(hours=8))
 from pathlib import Path
 
 from fastapi import APIRouter, Query
-from fastapi.responses import FileResponse
 from loguru import logger
 
 from app.database import get_db
@@ -27,9 +26,9 @@ from app.utils.exceptions import NotFoundException, ForbiddenException
 
 router = APIRouter(tags=["runs"])
 
-# 截图持久化目录
-_SCREENSHOTS_DIR = Path(__file__).parent.parent.parent / "data" / "screenshots"
-_SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+# 图床配置（freeimage.host）
+_IMAGE_HOSTING_API = "https://freeimage.host/api/1/upload"
+_IMAGE_HOSTING_KEY = "6d207e02198a847aa98d0a2a901485a5"
 
 
 def _row_to_run(r) -> RunOut:
@@ -381,18 +380,34 @@ async def _run_single_script(script: str, timeout: int = 60) -> tuple[str, str, 
 
 
 def _collect_screenshots(screenshot_dir: Path) -> list[str]:
-    """收集截图目录中的 png/jpg 文件，移动到持久化目录，返回文件名列表"""
-    saved = []
+    """收集截图目录中的图片文件，上传到 freeimage.host 图床，返回 URL 列表"""
+    import base64
+    import urllib.parse
+    import urllib.request
+
+    urls = []
     if not screenshot_dir.exists():
-        return saved
+        return urls
     for f in sorted(screenshot_dir.iterdir()):
         if f.suffix.lower() in (".png", ".jpg", ".jpeg"):
-            # 用 uuid 前缀避免冲突
-            dest_name = f"{uuid.uuid4().hex[:8]}_{f.name}"
-            dest = _SCREENSHOTS_DIR / dest_name
-            shutil.move(str(f), str(dest))
-            saved.append(dest_name)
-    return saved
+            try:
+                b64 = base64.b64encode(f.read_bytes()).decode()
+                data = urllib.parse.urlencode({
+                    "key": _IMAGE_HOSTING_KEY,
+                    "source": b64,
+                    "format": "json",
+                }).encode()
+                req = urllib.request.Request(_IMAGE_HOSTING_API, data=data, method="POST")
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    result = json.loads(resp.read())
+                if result.get("status_code") == 200:
+                    urls.append(result["image"]["url"])
+                    logger.info(f"截图上传成功: {f.name} -> {urls[-1]}")
+                else:
+                    logger.warning(f"截图上传失败: {f.name}, 响应: {result}")
+            except Exception as e:
+                logger.error(f"截图上传异常: {f.name}, {e}")
+    return urls
 
 
 async def _recalculate_run(db, run_id: str) -> None:
@@ -425,12 +440,4 @@ async def _recalculate_run(db, run_id: str) -> None:
     await db.commit()
 
 
-@router.get("/screenshots/{filename}")
-async def get_screenshot(filename: str):
-    """获取执行截图文件"""
-    # 防止路径穿越
-    safe_name = Path(filename).name
-    file_path = _SCREENSHOTS_DIR / safe_name
-    if not file_path.exists():
-        raise NotFoundException("截图不存在")
-    return FileResponse(file_path, media_type="image/png")
+

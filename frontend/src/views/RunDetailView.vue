@@ -76,7 +76,7 @@
             <div v-if="record.screenshots && record.screenshots.length > 0">
               <strong>截图：</strong>
               <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
-                <a-image v-for="s in record.screenshots" :key="s" :src="`/api/screenshots/${s}`" :width="320" style="border: 1px solid #d9d9d9; border-radius: 4px;" />
+                <a-image v-for="s in record.screenshots" :key="s" :src="s" :width="320" style="border: 1px solid #d9d9d9; border-radius: 4px;" />
               </div>
             </div>
             <div v-if="!record.log && (!record.screenshots || record.screenshots.length === 0)">
