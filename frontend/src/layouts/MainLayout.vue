@@ -1,7 +1,8 @@
 <template>
   <a-layout class="app-layout">
-    <a-layout-sider :width="200" :style="{ position: 'fixed', height: '100vh', left: 0 }">
+    <a-layout-sider :width="200" :style="{ position: 'fixed', height: '100vh', left: 0, zIndex: 100 }">
       <div class="logo">QHub</div>
+      <div v-if="currentProject" class="project-name">{{ currentProject.name }}</div>
       <a-menu theme="dark" mode="inline" :selectedKeys="selectedKeys" @click="onMenuClick">
         <a-menu-item key="projects">
           <ProjectOutlined />
@@ -29,6 +30,12 @@
     </a-layout-sider>
     <a-layout :style="{ marginLeft: '200px' }">
       <a-layout-content class="app-content">
+        <!-- 面包屑 -->
+        <a-breadcrumb class="breadcrumb">
+          <a-breadcrumb-item><router-link to="/projects">项目</router-link></a-breadcrumb-item>
+          <a-breadcrumb-item v-if="currentProject">{{ currentProject.name }}</a-breadcrumb-item>
+          <a-breadcrumb-item v-if="pageTitle && projectId">{{ pageTitle }}</a-breadcrumb-item>
+        </a-breadcrumb>
         <!-- 页面标题 -->
         <div class="page-header">
           <h1 class="page-title">{{ pageTitle }}</h1>
@@ -41,7 +48,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, computed, ref } from 'vue'
+import { defineComponent, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   ProjectOutlined,
@@ -50,6 +57,7 @@ import {
   PlayCircleOutlined,
   BarChartOutlined,
 } from '@ant-design/icons-vue'
+import { useProjectStore } from '../stores/project'
 
 const titleMap: Record<string, string> = {
   projects: '项目管理',
@@ -65,8 +73,24 @@ export default defineComponent({
   setup() {
     const router = useRouter()
     const route = useRoute()
+    const projectStore = useProjectStore()
 
     const projectId = computed(() => route.params.projectId as string | undefined)
+    const currentProject = computed(() => projectStore.currentProject)
+
+    // 当 projectId 变化时，加载项目信息
+    watch(projectId, async (id) => {
+      if (id && (!currentProject.value || String(currentProject.value.id) !== id)) {
+        // 确保项目列表已加载
+        if (projectStore.projects.length === 0) {
+          await projectStore.fetchProjects()
+        }
+        const found = projectStore.projects.find(p => String(p.id) === id)
+        projectStore.setCurrentProject(found || null)
+      } else if (!id) {
+        projectStore.setCurrentProject(null)
+      }
+    }, { immediate: true })
 
     const selectedKeys = computed(() => {
       const name = route.name as string | undefined
@@ -91,7 +115,7 @@ export default defineComponent({
       }
     }
 
-    return { selectedKeys, pageTitle, projectId, onMenuClick }
+    return { selectedKeys, pageTitle, projectId, currentProject, onMenuClick }
   },
 })
 </script>
@@ -99,7 +123,9 @@ export default defineComponent({
 <style scoped>
 .app-layout { min-height: 100vh; }
 .logo { height: 32px; margin: 16px; color: #fff; font-size: 18px; font-weight: bold; text-align: center; line-height: 32px; }
+.project-name { color: rgba(255,255,255,0.65); font-size: 12px; text-align: center; padding: 0 16px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-content { padding: 24px; min-width: 960px; }
-.page-header { padding-top: 32px; margin-bottom: 24px; }
+.breadcrumb { margin-bottom: 8px; }
+.page-header { margin-bottom: 24px; }
 .page-title { font-size: 20px; font-weight: 600; margin: 0; color: rgba(0, 0, 0, 0.88); }
 </style>
