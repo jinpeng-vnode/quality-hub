@@ -89,7 +89,60 @@
           </a-radio-group>
         </a-form-item>
         <a-form-item v-if="form.caseType === 'e2e'" label="Playwright 脚本">
-          <p style="color: rgba(0,0,0,0.45); margin-bottom: 8px;">编写 Python Playwright 同步脚本。环境变量 QH_SCREENSHOT_DIR 为截图保存目录，脚本中截图会自动收集展示。</p>
+          <a-collapse style="margin-bottom: 12px;">
+            <a-collapse-panel key="guide" header="📖 脚本编写指南（点击展开）">
+              <div style="font-size: 13px; line-height: 1.8; color: rgba(0,0,0,0.65);">
+                <h4 style="margin: 0 0 8px;">运行环境</h4>
+                <ul style="padding-left: 20px; margin: 0 0 12px;">
+                  <li><b>Python 3.11</b> + <b>Playwright 1.60</b>（同步 API）</li>
+                  <li>浏览器：Chromium（headless 模式，容器内运行）</li>
+                  <li>超时：默认 60 秒，可在触发执行时自定义</li>
+                  <li>每条用例独立进程执行，串行运行</li>
+                </ul>
+                <h4 style="margin: 0 0 8px;">可用包</h4>
+                <ul style="padding-left: 20px; margin: 0 0 12px;">
+                  <li><code>playwright</code> — 浏览器自动化</li>
+                  <li><code>os</code>, <code>json</code>, <code>re</code>, <code>time</code> — 标准库</li>
+                  <li><code>httpx</code> — HTTP 请求</li>
+                </ul>
+                <h4 style="margin: 0 0 8px;">截图约定</h4>
+                <ul style="padding-left: 20px; margin: 0 0 12px;">
+                  <li>环境变量 <code>QH_SCREENSHOT_DIR</code> 为截图保存目录（自动注入）</li>
+                  <li>将 .png/.jpg 文件保存到该目录，执行后自动上传图床并展示</li>
+                  <li>可保存多张截图，按文件名排序展示</li>
+                </ul>
+                <h4 style="margin: 0 0 8px;">判定规则</h4>
+                <ul style="padding-left: 20px; margin: 0 0 12px;">
+                  <li>退出码 0 = <b>通过</b>，非 0 = <b>失败</b></li>
+                  <li><code>assert</code> 失败会自动退出码非 0</li>
+                  <li>stdout + stderr 自动记录为执行日志</li>
+                </ul>
+                <h4 style="margin: 0 0 8px;">示例脚本</h4>
+                <pre style="background: #f5f5f5; padding: 8px; border-radius: 4px; font-size: 12px; overflow-x: auto;">import os
+from playwright.sync_api import sync_playwright
+
+SCREENSHOT_DIR = os.environ.get("QH_SCREENSHOT_DIR", ".")
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=True)
+    page = browser.new_page()
+
+    # 访问页面
+    page.goto("https://www.baidu.com")
+
+    # 断言验证
+    assert "百度" in page.title()
+
+    # 截图（自动上传图床展示）
+    page.screenshot(path=os.path.join(SCREENSHOT_DIR, "result.png"))
+
+    # 打印日志（会显示在执行详情中）
+    print(f"验证通过: {page.title()}")
+
+    browser.close()</pre>
+              </div>
+            </a-collapse-panel>
+          </a-collapse>
           <a-textarea v-model:value="form.midsceneScript" :rows="15"
             placeholder="import os&#10;from playwright.sync_api import sync_playwright&#10;&#10;# 截图保存目录（执行引擎自动注入）&#10;SCREENSHOT_DIR = os.environ.get('QH_SCREENSHOT_DIR', '.')&#10;&#10;with sync_playwright() as p:&#10;    browser = p.chromium.launch(headless=True)&#10;    page = browser.new_page()&#10;&#10;    # 1. 访问目标页面&#10;    page.goto('https://example.com')&#10;&#10;    # 2. 执行测试操作&#10;    assert 'Example' in page.title()&#10;&#10;    # 3. 截图（保存到 QH_SCREENSHOT_DIR 会自动收集）&#10;    page.screenshot(path=os.path.join(SCREENSHOT_DIR, 'result.png'))&#10;&#10;    browser.close()"
             style="font-family: monospace; font-size: 13px;" />
