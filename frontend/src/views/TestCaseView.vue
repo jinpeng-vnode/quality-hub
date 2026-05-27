@@ -136,9 +136,9 @@ export default defineComponent({
     const loading = ref(false)
     const showDrawer = ref(false)
     const editingCase = ref<TestCase | null>(null)
-    const filters = reactive({ featureId: undefined as number | undefined, caseType: undefined as string | undefined })
+    const filters = reactive({ featureId: undefined as string | undefined, caseType: undefined as string | undefined })
     const form = reactive({
-      featureId: undefined as number | undefined,
+      featureId: undefined as string | undefined,
       title: '',
       steps: '',
       expectedResult: '',
@@ -237,7 +237,7 @@ export default defineComponent({
       // 从 URL query 读取 featureId 自动筛选
       const queryFeatureId = route.query.featureId
       if (queryFeatureId) {
-        filters.featureId = Number(queryFeatureId)
+        filters.featureId = String(queryFeatureId)
       }
       fetchCases()
     })
