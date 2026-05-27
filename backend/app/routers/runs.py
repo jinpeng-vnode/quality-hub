@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import shutil
 import sys
 import tempfile
@@ -16,6 +18,7 @@ _SHANGHAI_TZ = timezone(timedelta(hours=8))
 from pathlib import Path
 
 from fastapi import APIRouter, Query
+from fastapi.responses import FileResponse
 from loguru import logger
 
 from app.database import get_db
@@ -23,6 +26,10 @@ from app.models.schemas import RunCreate, RunOut, RunResultOut, RunResultUpdate
 from app.utils.exceptions import NotFoundException, ForbiddenException
 
 router = APIRouter(tags=["runs"])
+
+# 截图持久化目录
+_SCREENSHOTS_DIR = Path(__file__).parent.parent.parent / "data" / "screenshots"
+_SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _row_to_run(r) -> RunOut:
@@ -36,11 +43,17 @@ def _row_to_run(r) -> RunOut:
 
 
 def _row_to_result(r) -> RunResultOut:
+    screenshots_raw = r["screenshots"] if "screenshots" in r.keys() else "[]"
+    try:
+        screenshots = json.loads(screenshots_raw) if screenshots_raw else []
+    except (json.JSONDecodeError, TypeError):
+        screenshots = []
     return RunResultOut(
         id=r["id"], runId=r["run_id"], caseId=r["case_id"],
         status=r["status"], errorMessage=r["error_message"] or None,
         durationMs=r["duration_ms"],
         log=r["log"] if "log" in r.keys() else "",
+        screenshots=screenshots,
     )
 
 
@@ -226,6 +239,11 @@ async def get_run_results(run_id: str):
         )
         results = []
         for r in await cursor.fetchall():
+            screenshots_raw = r["screenshots"] if "screenshots" in r.keys() else "[]"
+            try:
+                screenshots = json.loads(screenshots_raw) if screenshots_raw else []
+            except (json.JSONDecodeError, TypeError):
+                screenshots = []
             results.append(RunResultOut(
                 id=r["id"], runId=r["run_id"], caseId=r["case_id"],
                 caseTitle=r["case_title"] or "",
@@ -234,6 +252,7 @@ async def get_run_results(run_id: str):
                 status=r["status"], errorMessage=r["error_message"] or None,
                 durationMs=r["duration_ms"],
                 log=r["log"] if "log" in r.keys() else "",
+                screenshots=screenshots,
             ))
         return results
     finally:
@@ -306,12 +325,12 @@ async def _execute_script_run(run_id: str, case_scripts: list[dict], timeout: in
                 continue
 
             start = datetime.now(_SHANGHAI_TZ)
-            status, log = await _run_single_script(script, timeout)
+            status, log, screenshots = await _run_single_script(script, timeout)
             duration = int((datetime.now(_SHANGHAI_TZ) - start).total_seconds() * 1000)
             error_msg = log if status == "failed" else ""
             await db.execute(
-                "UPDATE run_results SET status = ?, error_message = ?, duration_ms = ?, log = ? WHERE id = ?",
-                (status, error_msg, duration, log, result_id),
+                "UPDATE run_results SET status = ?, error_message = ?, duration_ms = ?, log = ?, screenshots = ? WHERE id = ?",
+                (status, error_msg, duration, log, json.dumps(screenshots), result_id),
             )
             await db.commit()
 
@@ -328,30 +347,52 @@ async def _execute_script_run(run_id: str, case_scripts: list[dict], timeout: in
         await db.close()
 
 
-async def _run_single_script(script: str, timeout: int = 60) -> tuple[str, str]:
-    """执行单条脚本，返回 (status, log)"""
+async def _run_single_script(script: str, timeout: int = 60) -> tuple[str, str, list[str]]:
+    """执行单条脚本，返回 (status, log, screenshots)"""
     tmp_dir = tempfile.mkdtemp(prefix="qh_run_")
     script_path = Path(tmp_dir) / "test_script.py"
+    screenshot_dir = Path(tmp_dir) / "screenshots"
+    screenshot_dir.mkdir()
     try:
         script_path.write_text(script, encoding="utf-8")
-        # 使用当前解释器执行脚本，确保能找到 playwright 等依赖
+        # 通过环境变量告诉脚本截图保存位置
+        env = {**os.environ, "QH_SCREENSHOT_DIR": str(screenshot_dir)}
         proc = await asyncio.create_subprocess_exec(
             sys.executable, str(script_path),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=tmp_dir,
+            env=env,
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         log = (stdout.decode() + "\n" + stderr.decode()).strip()
         status = "passed" if proc.returncode == 0 else "failed"
-        return status, log
+        # 收集截图文件，移动到持久化目录
+        saved_screenshots = _collect_screenshots(screenshot_dir)
+        return status, log, saved_screenshots
     except asyncio.TimeoutError:
         proc.kill()  # type: ignore
-        return "failed", f"执行超时（{timeout}s）"
+        saved_screenshots = _collect_screenshots(screenshot_dir)
+        return "failed", f"执行超时（{timeout}s）", saved_screenshots
     except Exception as e:
-        return "failed", f"执行异常: {e}"
+        return "failed", f"执行异常: {e}", []
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _collect_screenshots(screenshot_dir: Path) -> list[str]:
+    """收集截图目录中的 png/jpg 文件，移动到持久化目录，返回文件名列表"""
+    saved = []
+    if not screenshot_dir.exists():
+        return saved
+    for f in sorted(screenshot_dir.iterdir()):
+        if f.suffix.lower() in (".png", ".jpg", ".jpeg"):
+            # 用 uuid 前缀避免冲突
+            dest_name = f"{uuid.uuid4().hex[:8]}_{f.name}"
+            dest = _SCREENSHOTS_DIR / dest_name
+            shutil.move(str(f), str(dest))
+            saved.append(dest_name)
+    return saved
 
 
 async def _recalculate_run(db, run_id: str) -> None:
@@ -382,3 +423,14 @@ async def _recalculate_run(db, run_id: str) -> None:
             (passed, failed, skipped, run_id),
         )
     await db.commit()
+
+
+@router.get("/screenshots/{filename}")
+async def get_screenshot(filename: str):
+    """获取执行截图文件"""
+    # 防止路径穿越
+    safe_name = Path(filename).name
+    file_path = _SCREENSHOTS_DIR / safe_name
+    if not file_path.exists():
+        raise NotFoundException("截图不存在")
+    return FileResponse(file_path, media_type="image/png")

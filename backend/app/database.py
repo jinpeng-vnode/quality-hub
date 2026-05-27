@@ -90,6 +90,7 @@ async def init_db() -> None:
             "ALTER TABLE runs ADD COLUMN mode TEXT NOT NULL DEFAULT 'manual'",
             "ALTER TABLE runs ADD COLUMN skipped INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE run_results ADD COLUMN log TEXT DEFAULT ''",
+            "ALTER TABLE run_results ADD COLUMN screenshots TEXT DEFAULT '[]'",
         ]
         for sql in migrations:
             try:

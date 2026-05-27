@@ -89,9 +89,9 @@
           </a-radio-group>
         </a-form-item>
         <a-form-item v-if="form.caseType === 'e2e'" label="Playwright 脚本">
-          <p style="color: rgba(0,0,0,0.45); margin-bottom: 8px;">编写 Python Playwright 自动化测试脚本，执行时将自动运行</p>
+          <p style="color: rgba(0,0,0,0.45); margin-bottom: 8px;">编写 Python Playwright 同步脚本。环境变量 QH_SCREENSHOT_DIR 为截图保存目录，脚本中截图会自动收集展示。</p>
           <a-textarea v-model:value="form.midsceneScript" :rows="15"
-            placeholder="import asyncio&#10;from playwright.async_api import async_playwright&#10;&#10;async def test_example():&#10;    async with async_playwright() as p:&#10;        browser = await p.chromium.launch()&#10;        page = await browser.new_page()&#10;        await page.goto('http://localhost:3000')&#10;        # 在此编写测试逻辑&#10;        await browser.close()&#10;&#10;asyncio.run(test_example())"
+            placeholder="import os&#10;from playwright.sync_api import sync_playwright&#10;&#10;# 截图保存目录（执行引擎自动注入）&#10;SCREENSHOT_DIR = os.environ.get('QH_SCREENSHOT_DIR', '.')&#10;&#10;with sync_playwright() as p:&#10;    browser = p.chromium.launch(headless=True)&#10;    page = browser.new_page()&#10;&#10;    # 1. 访问目标页面&#10;    page.goto('https://example.com')&#10;&#10;    # 2. 执行测试操作&#10;    assert 'Example' in page.title()&#10;&#10;    # 3. 截图（保存到 QH_SCREENSHOT_DIR 会自动收集）&#10;    page.screenshot(path=os.path.join(SCREENSHOT_DIR, 'result.png'))&#10;&#10;    browser.close()"
             style="font-family: monospace; font-size: 13px;" />
         </a-form-item>
       </a-form>

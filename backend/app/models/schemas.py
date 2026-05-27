@@ -168,6 +168,7 @@ class RunResultOut(BaseModel):
     error_message: str | None = Field(None, alias="errorMessage")
     duration_ms: int | None = Field(None, alias="durationMs")
     log: str = Field(default="")
+    screenshots: list[str] = Field(default_factory=list)
     model_config = {"populate_by_name": True}
 
 
