@@ -2,7 +2,7 @@
   <div class="run-detail-view">
     <a-page-header :title="`执行详情`" @back="goBack">
       <template #extra>
-        <a-tag :color="statusColor(run?.status)">{{ statusText(run?.status) }}</a-tag>
+        <a-tag :color="statusColor(displayStatus)">{{ statusText(displayStatus) }}</a-tag>
       </template>
     </a-page-header>
 
@@ -145,9 +145,19 @@ export default defineComponent({
     const loading = ref(false)
 
     const hasPending = computed(() => results.value.some(r => r.status === 'pending'))
+    // 全部 skipped 时不应显示"通过"
+    const displayStatus = computed(() => {
+      if (run.value?.status === 'passed' && run.value.skipped === run.value.total) {
+        return 'skipped'
+      }
+      return run.value?.status
+    })
     const passRate = computed(() => {
-      if (!run.value || run.value.total === 0) return '0.0'
-      return ((run.value.passed / run.value.total) * 100).toFixed(1)
+      if (!run.value) return '0.0'
+      // 排除 skipped，只计算实际执行的用例
+      const effective = run.value.total - (run.value.skipped || 0)
+      if (effective <= 0) return '0.0'
+      return ((run.value.passed / effective) * 100).toFixed(1)
     })
     const groupedResults = computed(() => {
       const map = new Map<string, RunResult[]>()
@@ -216,7 +226,7 @@ export default defineComponent({
       })
     })
 
-    return { run, results, groupedResults, loading, hasPending, passRate, report, resultColumns, statusColor, resultStatusColor, statusText, formatTime, goBack, markResult, retryResult }
+    return { run, results, groupedResults, loading, hasPending, displayStatus, passRate, report, resultColumns, statusColor, resultStatusColor, statusText, formatTime, goBack, markResult, retryResult }
   },
 })
 </script>
