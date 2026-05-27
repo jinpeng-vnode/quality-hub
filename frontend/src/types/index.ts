@@ -70,6 +70,7 @@ export interface RunResult {
   errorMessage: string | null
   durationMs: number | null
   log: string
+  screenshots: string[]
 }
 
 // 报告看板

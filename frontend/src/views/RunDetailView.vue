@@ -68,6 +68,21 @@
               </a-space>
             </template>
           </template>
+          <template #expandedRowRender="{ record }">
+            <div v-if="record.log" style="margin-bottom: 12px;">
+              <strong>执行日志：</strong>
+              <pre style="background: #f5f5f5; padding: 8px; border-radius: 4px; max-height: 200px; overflow: auto; font-size: 12px; white-space: pre-wrap;">{{ record.log }}</pre>
+            </div>
+            <div v-if="record.screenshots && record.screenshots.length > 0">
+              <strong>截图：</strong>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+                <a-image v-for="s in record.screenshots" :key="s" :src="`/api/screenshots/${s}`" :width="320" style="border: 1px solid #d9d9d9; border-radius: 4px;" />
+              </div>
+            </div>
+            <div v-if="!record.log && (!record.screenshots || record.screenshots.length === 0)">
+              <span style="color: rgba(0,0,0,0.45);">无日志和截图</span>
+            </div>
+          </template>
         </a-table>
       </div>
     </a-spin>
