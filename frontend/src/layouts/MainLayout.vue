@@ -2,7 +2,6 @@
   <a-layout class="app-layout">
     <a-layout-sider :width="200" :style="{ position: 'fixed', height: '100vh', left: 0, zIndex: 100 }">
       <div class="logo">QHub</div>
-      <div v-if="currentProject" class="project-name">{{ currentProject.name }}</div>
       <a-menu theme="dark" mode="inline" :selectedKeys="selectedKeys" @click="onMenuClick">
         <a-menu-item key="projects">
           <ProjectOutlined />
@@ -123,7 +122,6 @@ export default defineComponent({
 <style scoped>
 .app-layout { min-height: 100vh; }
 .logo { height: 32px; margin: 16px; color: #fff; font-size: 18px; font-weight: bold; text-align: center; line-height: 32px; }
-.project-name { color: rgba(255,255,255,0.65); font-size: 12px; text-align: center; padding: 0 16px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-content { padding: 24px; min-width: 960px; }
 .breadcrumb { margin-bottom: 8px; }
 .page-header { margin-bottom: 24px; }

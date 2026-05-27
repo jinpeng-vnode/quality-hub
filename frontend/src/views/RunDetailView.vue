@@ -8,14 +8,18 @@
 
     <a-spin :spinning="loading">
       <!-- 执行概要 -->
-      <a-descriptions :column="3" bordered size="small" v-if="run" style="margin-bottom: 24px;">
+      <a-descriptions :column="{ xs: 2, sm: 3, md: 4 }" bordered size="small" v-if="run" style="margin-bottom: 24px;">
         <a-descriptions-item label="执行模式">
           <a-tag :color="run.mode === 'script' ? 'purple' : 'blue'">{{ run.mode === 'script' ? '脚本' : '手动' }}</a-tag>
         </a-descriptions-item>
         <a-descriptions-item label="用例总数">{{ run.total }}</a-descriptions-item>
+        <a-descriptions-item label="通过">
+          <span style="color: #52c41a; font-weight: 500;">{{ run.passed }}</span>
+        </a-descriptions-item>
+        <a-descriptions-item label="失败">
+          <span style="color: #ff4d4f; font-weight: 500;">{{ run.failed }}</span>
+        </a-descriptions-item>
         <a-descriptions-item label="通过率">{{ passRate }}%</a-descriptions-item>
-        <a-descriptions-item label="通过">{{ run.passed }}</a-descriptions-item>
-        <a-descriptions-item label="失败">{{ run.failed }}</a-descriptions-item>
         <a-descriptions-item label="创建时间">{{ formatTime(run.createdAt) }}</a-descriptions-item>
       </a-descriptions>
 
@@ -23,28 +27,34 @@
       <a-alert v-if="run?.mode === 'manual' && hasPending" type="info" show-icon style="margin-bottom: 16px;"
         message="请逐个标记用例执行结果" description="点击下方用例的「通过」或「失败」按钮来记录执行结果" />
 
-      <!-- 用例结果表格 -->
-      <a-table :dataSource="results" :columns="resultColumns" rowKey="id" size="middle"
-        :pagination="{ pageSize: 15 }">
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'caseTitle'">
-            {{ caseMap[record.caseId] || record.caseId }}
+      <!-- 用例结果按功能点分组 -->
+      <div v-for="group in groupedResults" :key="group.featureTitle" style="margin-bottom: 24px;">
+        <h3 style="margin-bottom: 12px; font-size: 15px; font-weight: 500; color: rgba(0,0,0,0.85); border-left: 3px solid #1890ff; padding-left: 8px;">
+          {{ group.featureTitle }}
+          <span style="color: rgba(0,0,0,0.45); font-size: 13px; margin-left: 8px;">{{ group.items.length }} 条</span>
+        </h3>
+        <a-table :dataSource="group.items" :columns="resultColumns" rowKey="id" size="middle"
+          :pagination="false">
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'caseTitle'">
+              {{ record.caseTitle || record.caseId }}
+            </template>
+            <template v-if="column.key === 'status'">
+              <a-tag :color="resultStatusColor(record.status)">{{ statusText(record.status) }}</a-tag>
+            </template>
+            <template v-if="column.key === 'action'">
+              <a-space v-if="record.status === 'pending' && run?.mode === 'manual'">
+                <a-button type="primary" size="small" @click="markResult(record, 'passed')">
+                  <CheckOutlined /> 通过
+                </a-button>
+                <a-button size="small" danger @click="markResult(record, 'failed')">
+                  <CloseOutlined /> 失败
+                </a-button>
+              </a-space>
+            </template>
           </template>
-          <template v-if="column.key === 'status'">
-            <a-tag :color="resultStatusColor(record.status)">{{ statusText(record.status) }}</a-tag>
-          </template>
-          <template v-if="column.key === 'action'">
-            <a-space v-if="record.status === 'pending' && run?.mode === 'manual'">
-              <a-button type="primary" size="small" @click="markResult(record, 'passed')">
-                <CheckOutlined /> 通过
-              </a-button>
-              <a-button size="small" danger @click="markResult(record, 'failed')">
-                <CloseOutlined /> 失败
-              </a-button>
-            </a-space>
-          </template>
-        </template>
-      </a-table>
+        </a-table>
+      </div>
     </a-spin>
   </div>
 </template>
@@ -54,7 +64,7 @@ import { defineComponent, ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons-vue'
-import type { TestRun, RunResult, TestCase } from '../types'
+import type { TestRun, RunResult } from '../types'
 import api from '../api'
 
 const resultColumns = [
@@ -96,13 +106,21 @@ export default defineComponent({
 
     const run = ref<TestRun | null>(null)
     const results = ref<RunResult[]>([])
-    const caseMap = ref<Record<string, string>>({})
     const loading = ref(false)
 
     const hasPending = computed(() => results.value.some(r => r.status === 'pending'))
     const passRate = computed(() => {
       if (!run.value || run.value.total === 0) return '0.0'
       return ((run.value.passed / run.value.total) * 100).toFixed(1)
+    })
+    const groupedResults = computed(() => {
+      const map = new Map<string, RunResult[]>()
+      for (const r of results.value) {
+        const key = r.featureTitle || '未分类'
+        if (!map.has(key)) map.set(key, [])
+        map.get(key)!.push(r)
+      }
+      return Array.from(map.entries()).map(([featureTitle, items]) => ({ featureTitle, items }))
     })
 
     function goBack() {
@@ -112,16 +130,12 @@ export default defineComponent({
     async function fetchData() {
       loading.value = true
       try {
-        const [runRes, resultsRes, casesRes] = await Promise.all([
+        const [runRes, resultsRes] = await Promise.all([
           api.get<TestRun>(`/runs/${runId.value}`),
           api.get<RunResult[]>(`/runs/${runId.value}/results`),
-          api.get<TestCase[]>('/cases', { params: { projectId: projectId.value } }),
         ])
         run.value = runRes.data
         results.value = resultsRes.data
-        const map: Record<string, string> = {}
-        casesRes.data.forEach(c => { map[c.id as unknown as string] = c.title })
-        caseMap.value = map
       } catch { /* 拦截器处理 */ }
       finally { loading.value = false }
     }
@@ -136,11 +150,11 @@ export default defineComponent({
 
     onMounted(fetchData)
 
-    return { run, results, caseMap, loading, hasPending, passRate, resultColumns, statusColor, resultStatusColor, statusText, formatTime, goBack, markResult }
+    return { run, results, groupedResults, loading, hasPending, passRate, resultColumns, statusColor, resultStatusColor, statusText, formatTime, goBack, markResult }
   },
 })
 </script>
 
 <style scoped>
-.run-detail-view { max-width: 1200px; }
+.run-detail-view { width: 100%; }
 </style>

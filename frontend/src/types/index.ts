@@ -63,6 +63,9 @@ export interface RunResult {
   id: number
   runId: number
   caseId: number
+  caseTitle: string
+  featureId: string
+  featureTitle: string
   status: RunStatus | 'skipped'
   errorMessage: string | null
   durationMs: number | null

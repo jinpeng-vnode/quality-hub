@@ -170,14 +170,33 @@ async def delete_run(run_id: str):
 
 @router.get("/runs/{run_id}/results", response_model=list[RunResultOut])
 async def get_run_results(run_id: str):
-    """获取执行结果明细"""
+    """获取执行结果明细（含用例标题和功能点信息）"""
     db = await get_db()
     try:
         cursor = await db.execute("SELECT id FROM runs WHERE id = ?", (run_id,))
         if not await cursor.fetchone():
             raise NotFoundException(f"未找到 ID 为 {run_id} 的执行记录")
-        cursor = await db.execute("SELECT * FROM run_results WHERE run_id = ?", (run_id,))
-        return [_row_to_result(r) for r in await cursor.fetchall()]
+        cursor = await db.execute(
+            """SELECT rr.*, c.title as case_title, c.feature_id, f.title as feature_title
+               FROM run_results rr
+               LEFT JOIN cases c ON rr.case_id = c.id
+               LEFT JOIN features f ON c.feature_id = f.id
+               WHERE rr.run_id = ?
+               ORDER BY f.title, c.title""",
+            (run_id,),
+        )
+        results = []
+        for r in await cursor.fetchall():
+            results.append(RunResultOut(
+                id=r["id"], runId=r["run_id"], caseId=r["case_id"],
+                caseTitle=r["case_title"] or "",
+                featureId=r["feature_id"] or "",
+                featureTitle=r["feature_title"] or "未分类",
+                status=r["status"], errorMessage=r["error_message"] or None,
+                durationMs=r["duration_ms"],
+                log=r["log"] if "log" in r.keys() else "",
+            ))
+        return results
     finally:
         await db.close()
 

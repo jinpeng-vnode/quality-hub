@@ -60,7 +60,17 @@
           <a-input v-model:value="form.title" placeholder="请输入用例标题" />
         </a-form-item>
         <a-form-item label="测试步骤">
-          <a-textarea v-model:value="form.steps" :rows="3" placeholder="Markdown 格式步骤" />
+          <div v-for="(step, index) in formSteps" :key="index" style="display: flex; align-items: center; margin-bottom: 8px;">
+            <span style="margin-right: 8px; color: rgba(0,0,0,0.45);">{{ index + 1 }}.</span>
+            <a-input v-model:value="formSteps[index]" placeholder="输入步骤" style="flex: 1;" />
+            <a-button type="link" danger size="small" @click="formSteps.splice(index, 1)" :disabled="formSteps.length <= 1" style="margin-left: 4px;">
+              <template #icon><DeleteOutlined /></template>
+            </a-button>
+          </div>
+          <a-button type="dashed" block @click="formSteps.push('')">
+            <template #icon><PlusOutlined /></template>
+            添加步骤
+          </a-button>
         </a-form-item>
         <a-form-item label="预期结果">
           <a-textarea v-model:value="form.expectedResult" :rows="2" placeholder="预期结果" />
@@ -136,16 +146,16 @@ export default defineComponent({
     const loading = ref(false)
     const showDrawer = ref(false)
     const editingCase = ref<TestCase | null>(null)
-    const filters = reactive({ featureId: undefined as number | undefined, caseType: undefined as string | undefined })
+    const filters = reactive({ featureId: undefined as string | undefined, caseType: undefined as string | undefined })
     const form = reactive({
-      featureId: undefined as number | undefined,
+      featureId: undefined as string | undefined,
       title: '',
-      steps: '',
       expectedResult: '',
       priority: 'medium' as string,
       caseType: 'manual' as string,
       midsceneScript: '',
     })
+    const formSteps = ref<string[]>([''])
 
     function copyId(id: string) {
       navigator.clipboard.writeText(id)
@@ -177,7 +187,15 @@ export default defineComponent({
       editingCase.value = record
       form.featureId = record.featureId
       form.title = record.title
-      form.steps = record.steps || ''
+      // 解析 steps：兼容 JSON 数组和旧的纯文本格式
+      if (record.steps) {
+        try {
+          const parsed = JSON.parse(record.steps)
+          formSteps.value = Array.isArray(parsed) ? parsed : [record.steps]
+        } catch { formSteps.value = [record.steps] }
+      } else {
+        formSteps.value = ['']
+      }
       form.expectedResult = record.expectedResult || ''
       form.priority = record.priority
       form.caseType = record.caseType
@@ -189,7 +207,7 @@ export default defineComponent({
       editingCase.value = null
       form.featureId = undefined
       form.title = ''
-      form.steps = ''
+      formSteps.value = ['']
       form.expectedResult = ''
       form.priority = 'medium'
       form.caseType = 'manual'
@@ -201,10 +219,11 @@ export default defineComponent({
         message.warning('请填写必填项')
         return
       }
+      const stepsArray = formSteps.value.filter(s => s.trim())
       const payload = {
         featureId: form.featureId,
         title: form.title,
-        steps: form.steps || null,
+        steps: stepsArray.length > 0 ? JSON.stringify(stepsArray) : null,
         expectedResult: form.expectedResult || null,
         priority: form.priority,
         caseType: form.caseType,
@@ -237,12 +256,12 @@ export default defineComponent({
       // 从 URL query 读取 featureId 自动筛选
       const queryFeatureId = route.query.featureId
       if (queryFeatureId) {
-        filters.featureId = Number(queryFeatureId)
+        filters.featureId = String(queryFeatureId)
       }
       fetchCases()
     })
 
-    return { testCases, features, loading, showDrawer, editingCase, filters, form, columns, priorityColor, priorityText, typeColor, typeText, copyId, openCreate, editCase, resetForm, handleSubmit, deleteCase, fetchCases }
+    return { testCases, features, loading, showDrawer, editingCase, filters, form, formSteps, columns, priorityColor, priorityText, typeColor, typeText, copyId, openCreate, editCase, resetForm, handleSubmit, deleteCase, fetchCases }
   },
 })
 </script>
