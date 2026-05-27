@@ -8,7 +8,10 @@ import asyncio
 import shutil
 import tempfile
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+
+# 上海时区 UTC+8
+_SHANGHAI_TZ = timezone(timedelta(hours=8))
 from pathlib import Path
 
 from fastapi import APIRouter, Query
@@ -61,7 +64,7 @@ async def create_run(body: RunCreate):
         cases = [dict(r) for r in await cursor.fetchall()]
 
         run_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(_SHANGHAI_TZ).isoformat()
         await db.execute(
             "INSERT INTO runs (id, project_id, status, mode, total, started_at) VALUES (?, ?, ?, ?, ?, ?)",
             (run_id, body.project_id, "running", body.mode, len(cases), now),
@@ -180,7 +183,7 @@ async def cancel_run(run_id: str):
         if row["status"] != "running":
             raise ForbiddenException("仅执行中的记录可取消")
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(_SHANGHAI_TZ).isoformat()
         await db.execute(
             "UPDATE run_results SET status = 'skipped' WHERE run_id = ? AND status = 'pending'",
             (run_id,),
@@ -301,9 +304,9 @@ async def _execute_script_run(run_id: str, case_scripts: list[dict]) -> None:
                 await db.commit()
                 continue
 
-            start = datetime.now(timezone.utc)
+            start = datetime.now(_SHANGHAI_TZ)
             status, log = await _run_single_script(script)
-            duration = int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
+            duration = int((datetime.now(_SHANGHAI_TZ) - start).total_seconds() * 1000)
             error_msg = log if status == "failed" else ""
             await db.execute(
                 "UPDATE run_results SET status = ?, error_message = ?, duration_ms = ?, log = ? WHERE id = ?",
@@ -315,7 +318,7 @@ async def _execute_script_run(run_id: str, case_scripts: list[dict]) -> None:
         await _recalculate_run(db, run_id)
     except Exception as e:
         logger.error(f"脚本执行异常 run={run_id}: {e}")
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(_SHANGHAI_TZ).isoformat()
         await db.execute(
             "UPDATE runs SET status = 'error', finished_at = ? WHERE id = ?", (now, run_id),
         )
@@ -358,7 +361,7 @@ async def _recalculate_run(db, run_id: str) -> None:
     skipped = sum(1 for r in rows if r["status"] == "skipped")
     pending = sum(1 for r in rows if r["status"] == "pending")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(_SHANGHAI_TZ).isoformat()
     if pending == 0:
         # 全部完成：有失败则 failed，全 skipped 则 completed，否则 passed
         if failed > 0:

@@ -27,8 +27,8 @@ async def init_db() -> None:
                 name TEXT NOT NULL,
                 repo_url TEXT DEFAULT '',
                 description TEXT DEFAULT '',
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours'))
             );
 
             CREATE TABLE IF NOT EXISTS features (
@@ -38,7 +38,7 @@ async def init_db() -> None:
                 description TEXT DEFAULT '',
                 source TEXT DEFAULT NULL,
                 status TEXT NOT NULL DEFAULT 'pending',
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')),
                 FOREIGN KEY (project_id) REFERENCES projects(id)
             );
 
@@ -51,8 +51,8 @@ async def init_db() -> None:
                 priority TEXT NOT NULL DEFAULT 'medium',
                 case_type TEXT NOT NULL DEFAULT 'manual',
                 midscene_script TEXT DEFAULT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')),
                 FOREIGN KEY (feature_id) REFERENCES features(id)
             );
 
@@ -67,7 +67,7 @@ async def init_db() -> None:
                 skipped INTEGER NOT NULL DEFAULT 0,
                 started_at TEXT,
                 finished_at TEXT,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')),
                 FOREIGN KEY (project_id) REFERENCES projects(id)
             );
 
