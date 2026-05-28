@@ -88,6 +88,10 @@
             <a-radio-button value="e2e">E2E 脚本</a-radio-button>
           </a-radio-group>
         </a-form-item>
+        <a-form-item v-if="form.caseType === 'e2e'" label="超时时间（秒）">
+          <a-input-number v-model:value="form.timeout" :min="5" :max="300" placeholder="默认60秒" style="width: 200px;" />
+          <span style="margin-left: 8px; color: rgba(0,0,0,0.45);">范围 5-300 秒，不填则使用默认值 60 秒</span>
+        </a-form-item>
         <a-form-item v-if="form.caseType === 'e2e'" label="Playwright 脚本">
           <a-collapse style="margin-bottom: 12px;">
             <a-collapse-panel key="guide" header="📖 脚本编写指南（点击展开）">
@@ -227,6 +231,7 @@ export default defineComponent({
       priority: 'medium' as string,
       caseType: 'manual' as string,
       midsceneScript: '',
+      timeout: null as number | null,
     })
     const formSteps = ref<string[]>([''])
 
@@ -273,6 +278,7 @@ export default defineComponent({
       form.priority = record.priority
       form.caseType = record.caseType
       form.midsceneScript = record.midsceneScript || ''
+      form.timeout = record.timeout || null
       showDrawer.value = true
     }
 
@@ -285,6 +291,7 @@ export default defineComponent({
       form.priority = 'medium'
       form.caseType = 'manual'
       form.midsceneScript = ''
+      form.timeout = null
     }
 
     async function handleSubmit() {
@@ -301,6 +308,7 @@ export default defineComponent({
         priority: form.priority,
         caseType: form.caseType,
         midsceneScript: form.caseType === 'e2e' ? (form.midsceneScript || null) : null,
+        timeout: form.caseType === 'e2e' ? form.timeout : null,
       }
       try {
         if (editingCase.value) {
