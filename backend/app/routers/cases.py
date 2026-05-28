@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import json
 import uuid
 from fastapi import APIRouter, Query
 from loguru import logger
@@ -16,10 +17,18 @@ router = APIRouter(tags=["cases"])
 
 
 def _row_to_case(r) -> CaseOut:
+    # steps 存储为 JSON 数组字符串，解析为 list
+    steps_raw = r["steps"] or "[]"
+    try:
+        steps = json.loads(steps_raw) if steps_raw else []
+        if not isinstance(steps, list):
+            steps = [steps_raw] if steps_raw else []
+    except (json.JSONDecodeError, TypeError):
+        steps = [steps_raw] if steps_raw else []
     return CaseOut(
         id=r["id"], featureId=r["feature_id"], title=r["title"],
-        steps=r["steps"] or None, expectedResult=r["expected_result"] or None,
-        priority=r["priority"], caseType=r["case_type"],
+        steps=steps, expectedResult=r["expected_result"] or None,
+        priority=r["priority"],
         midsceneScript=r["midscene_script"],
         createdAt=r["created_at"], updatedAt=r["updated_at"],
     )
@@ -46,8 +55,8 @@ async def create_case(body: CaseCreate):
         await db.execute(
             """INSERT INTO cases (id, feature_id, title, steps, expected_result, priority, case_type, midscene_script)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (case_id, body.feature_id, body.title, body.steps,
-             body.expected_result, body.priority.value, body.case_type.value, body.midscene_script),
+            (case_id, body.feature_id, body.title, json.dumps(body.steps),
+             body.expected_result, body.priority.value, "e2e", body.midscene_script),
         )
         await db.commit()
         cursor = await db.execute("SELECT * FROM cases WHERE id = ?", (case_id,))
@@ -79,8 +88,8 @@ async def create_cases_batch(body: list[CaseCreate]):
             await db.execute(
                 """INSERT INTO cases (id, feature_id, title, steps, expected_result, priority, case_type, midscene_script)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (case_id, item.feature_id, item.title, item.steps,
-                 item.expected_result, item.priority.value, item.case_type.value, item.midscene_script),
+                (case_id, item.feature_id, item.title, json.dumps(item.steps),
+                 item.expected_result, item.priority.value, "e2e", item.midscene_script),
             )
             cursor = await db.execute("SELECT * FROM cases WHERE id = ?", (case_id,))
             results.append(_row_to_case(await cursor.fetchone()))
@@ -145,16 +154,13 @@ async def update_case(case_id: str, body: CaseUpdate):
             params.append(body.title)
         if body.steps is not None:
             updates.append("steps = ?")
-            params.append(body.steps)
+            params.append(json.dumps(body.steps))
         if body.expected_result is not None:
             updates.append("expected_result = ?")
             params.append(body.expected_result)
         if body.priority is not None:
             updates.append("priority = ?")
             params.append(body.priority.value)
-        if body.case_type is not None:
-            updates.append("case_type = ?")
-            params.append(body.case_type.value)
         if body.midscene_script is not None:
             updates.append("midscene_script = ?")
             params.append(body.midscene_script)

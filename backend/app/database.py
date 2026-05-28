@@ -98,5 +98,20 @@ async def init_db() -> None:
             except Exception:
                 pass  # 列已存在，忽略
         await db.commit()
+
+        # 数据迁移：将旧的 steps 纯文本转为 JSON 数组格式
+        import json
+        cursor = await db.execute("SELECT id, steps FROM cases WHERE steps IS NOT NULL AND steps != '' AND steps NOT LIKE '[%'")
+        rows = await cursor.fetchall()
+        for row in rows:
+            old_steps = row["steps"]
+            try:
+                # 尝试解析，如果已经是 JSON 数组则跳过
+                json.loads(old_steps)
+            except (json.JSONDecodeError, TypeError):
+                # 纯文本，转为单元素数组
+                new_steps = json.dumps([old_steps])
+                await db.execute("UPDATE cases SET steps = ? WHERE id = ?", (new_steps, row["id"]))
+        await db.commit()
     finally:
         await db.close()

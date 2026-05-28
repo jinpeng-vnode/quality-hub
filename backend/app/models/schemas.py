@@ -21,9 +21,7 @@ class CasePriority(str, Enum):
     low = "low"
 
 
-class CaseType(str, Enum):
-    manual = "manual"
-    e2e = "e2e"
+
 
 
 class RunStatus(str, Enum):
@@ -93,20 +91,18 @@ class FeatureOut(BaseModel):
 class CaseCreate(BaseModel):
     feature_id: str = Field(..., alias="featureId")
     title: str = Field(..., min_length=1, max_length=200)
-    steps: str | None = None
-    expected_result: str | None = Field(None, alias="expectedResult")
+    steps: list[str] = Field(..., min_length=1, description="测试步骤数组，每步一条")
+    expected_result: str = Field(..., alias="expectedResult", min_length=1, description="预期结果")
     priority: CasePriority = CasePriority.medium
-    case_type: CaseType = Field(CaseType.manual, alias="caseType")
-    midscene_script: str | None = Field(None, alias="midsceneScript")
+    midscene_script: str = Field(..., alias="midsceneScript", min_length=1, description="Playwright 脚本")
     model_config = {"populate_by_name": True}
 
 
 class CaseUpdate(BaseModel):
     title: str | None = Field(None, max_length=200)
-    steps: str | None = None
+    steps: list[str] | None = None
     expected_result: str | None = Field(None, alias="expectedResult")
     priority: CasePriority | None = None
-    case_type: CaseType | None = Field(None, alias="caseType")
     midscene_script: str | None = Field(None, alias="midsceneScript")
     model_config = {"populate_by_name": True}
 
@@ -115,10 +111,9 @@ class CaseOut(BaseModel):
     id: str
     feature_id: str = Field(alias="featureId")
     title: str
-    steps: str | None
+    steps: list[str] = Field(default_factory=list)
     expected_result: str | None = Field(None, alias="expectedResult")
     priority: CasePriority
-    case_type: CaseType = Field(alias="caseType")
     midscene_script: str | None = Field(None, alias="midsceneScript")
     created_at: str = Field(alias="createdAt")
     updated_at: str = Field(alias="updatedAt")
@@ -130,8 +125,7 @@ class RunCreate(BaseModel):
     project_id: str = Field(..., alias="projectId")
     case_ids: list[str] = Field(default_factory=list, alias="caseIds")
     feature_ids: list[str] = Field(default_factory=list, alias="featureIds")
-    mode: str = Field(default="manual")  # "manual" | "script"
-    timeout: int = Field(default=60, ge=5, le=300)  # 单条用例超时秒数，默认60s
+    timeout: int = Field(default=60, ge=5, le=300)
     model_config = {"populate_by_name": True}
 
 

@@ -26,16 +26,14 @@ export interface Feature {
 
 // 测试用例
 export type CasePriority = 'high' | 'medium' | 'low'
-export type CaseType = 'manual' | 'e2e'
 
 export interface TestCase {
   id: number
   featureId: number
   title: string
-  steps: string | null
+  steps: string[]
   expectedResult: string | null
   priority: CasePriority
-  caseType: CaseType
   midsceneScript: string | null
   timeout: number | null
   createdAt: string
@@ -49,7 +47,7 @@ export interface TestRun {
   id: number
   projectId: number
   status: RunStatus
-  mode: 'manual' | 'script'
+  mode: string
   total: number
   passed: number
   failed: number

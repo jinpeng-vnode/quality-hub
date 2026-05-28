@@ -5,19 +5,10 @@
       <a-space>
         <a-select v-model:value="selectedFeatureIds" mode="multiple" placeholder="按功能点执行（不选则全部）" style="min-width: 280px;" allowClear :options="featureOptions" />
       </a-space>
-      <a-dropdown>
-        <template #overlay>
-          <a-menu @click="handleTrigger">
-            <a-menu-item key="manual">手动模式</a-menu-item>
-            <a-menu-item key="script">脚本模式</a-menu-item>
-          </a-menu>
-        </template>
-        <a-button type="primary" :loading="triggering">
-          <template #icon><PlayCircleOutlined /></template>
-          触发执行
-          <DownOutlined />
-        </a-button>
-      </a-dropdown>
+      <a-button type="primary" :loading="triggering" @click="handleTrigger">
+        <template #icon><PlayCircleOutlined /></template>
+        触发执行
+      </a-button>
     </div>
 
     <a-spin :spinning="loading">
@@ -26,9 +17,6 @@
         <template #bodyCell="{ column, record, text }">
           <template v-if="column.key === 'id'">
             <span :title="record.id">{{ record.id.slice(0, 8) }}</span>
-          </template>
-          <template v-if="column.key === 'mode'">
-            <a-tag :color="record.mode === 'script' ? 'purple' : 'blue'">{{ record.mode === 'script' ? '脚本' : '手动' }}</a-tag>
           </template>
           <template v-if="column.key === 'status'">
             <a-tag :color="statusColor(record.status)">{{ statusText(record.status) }}</a-tag>
@@ -60,13 +48,12 @@
 import { defineComponent, ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { PlayCircleOutlined, DownOutlined } from '@ant-design/icons-vue'
+import { PlayCircleOutlined } from '@ant-design/icons-vue'
 import type { TestRun, Feature } from '../types'
 import api from '../api'
 
 const columns = [
   { title: 'ID', key: 'id', dataIndex: 'id', width: 90 },
-  { title: '执行模式', key: 'mode', dataIndex: 'mode', width: 100 },
   { title: '状态', key: 'status', dataIndex: 'status', width: 100 },
   { title: '用例总数', dataIndex: 'total', key: 'total', width: 90 },
   { title: '结果', key: 'result', width: 120 },
@@ -92,7 +79,7 @@ function formatTime(t: string | null | undefined): string {
 
 export default defineComponent({
   name: 'ExecutionView',
-  components: { PlayCircleOutlined, DownOutlined },
+  components: { PlayCircleOutlined },
   setup() {
     const route = useRoute()
     const projectId = computed(() => route.params.projectId as string)
@@ -117,22 +104,22 @@ export default defineComponent({
       try {
         const { data } = await api.get<TestRun[]>('/runs', { params: { projectId: projectId.value } })
         runs.value = data
-      } catch { /* 拦截器处理 */ }
+      } catch { /* */ }
       finally { loading.value = false }
     }
 
-    async function handleTrigger({ key }: { key: string }) {
+    async function handleTrigger() {
       triggering.value = true
       try {
-        const payload: Record<string, unknown> = { projectId: projectId.value, mode: key }
+        const payload: Record<string, unknown> = { projectId: projectId.value }
         if (selectedFeatureIds.value.length > 0) {
           payload.featureIds = selectedFeatureIds.value
         }
         await api.post('/runs', payload)
-        message.success(`已触发${key === 'script' ? '脚本' : '手动'}执行`)
+        message.success('已触发执行')
         fetchRuns()
         startAutoRefresh()
-      } catch { /* 拦截器处理 */ }
+      } catch { /* */ }
       finally { triggering.value = false }
     }
 
@@ -141,10 +128,9 @@ export default defineComponent({
         await api.post(`/runs/${runId}/cancel`)
         message.success('已取消执行')
         fetchRuns()
-      } catch { /* 拦截器处理 */ }
+      } catch { /* */ }
     }
 
-    // 自动刷新：有 running 状态时每 5 秒刷新
     let refreshTimer: ReturnType<typeof setInterval> | null = null
     function startAutoRefresh() {
       stopAutoRefresh()

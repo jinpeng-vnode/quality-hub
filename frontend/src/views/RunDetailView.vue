@@ -25,7 +25,7 @@
       <!-- 执行概要 -->
       <a-descriptions :column="{ xs: 2, sm: 3, md: 4 }" bordered size="small" v-if="run" style="margin-bottom: 24px;">
         <a-descriptions-item label="执行模式">
-          <a-tag :color="run.mode === 'script' ? 'purple' : 'blue'">{{ run.mode === 'script' ? '脚本' : '手动' }}</a-tag>
+          <a-tag color="purple">脚本</a-tag>
         </a-descriptions-item>
         <a-descriptions-item label="用例总数">{{ run.total }}</a-descriptions-item>
         <a-descriptions-item label="通过">
@@ -38,9 +38,9 @@
         <a-descriptions-item label="创建时间">{{ formatTime(run.createdAt) }}</a-descriptions-item>
       </a-descriptions>
 
-      <!-- 手动模式引导文案 -->
-      <a-alert v-if="run?.mode === 'manual' && hasPending" type="info" show-icon style="margin-bottom: 16px;"
-        message="请逐个标记用例执行结果" description="点击下方用例的「通过」或「失败」按钮来记录执行结果" />
+      <!-- 手动覆盖引导文案 -->
+      <a-alert v-if="hasPending" type="info" show-icon style="margin-bottom: 16px;"
+        message="可手动覆盖执行结果" description="点击下方用例的「通过」或「失败」按钮来覆盖自动执行结果" />
 
       <!-- 用例结果按功能点分组 -->
       <div v-for="group in groupedResults" :key="group.featureTitle" style="margin-bottom: 24px;">
@@ -65,7 +65,7 @@
                 <a-button size="small" danger @click="markResult(record, 'failed')" :disabled="record.status === 'running'">
                   <CloseOutlined /> 失败
                 </a-button>
-                <a-button v-if="record.status !== 'pending' && run?.mode === 'script'" size="small" @click="retryResult(record)" :loading="record._retrying">
+                <a-button v-if="record.status !== 'pending'" size="small" @click="retryResult(record)" :loading="record._retrying">
                   <ReloadOutlined /> 重试
                 </a-button>
               </a-space>

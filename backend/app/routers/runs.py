@@ -83,7 +83,7 @@ async def create_run(body: RunCreate):
         now = datetime.now(_SHANGHAI_TZ).isoformat()
         await db.execute(
             "INSERT INTO runs (id, project_id, status, mode, total, started_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (run_id, body.project_id, "running", body.mode, len(cases), now),
+            (run_id, body.project_id, "running", "script", len(cases), now),
         )
 
         # 创建每条用例的执行结果记录
@@ -97,9 +97,8 @@ async def create_run(body: RunCreate):
             case_scripts.append({"result_id": result_id, "script": c.get("midscene_script") or ""})
         await db.commit()
 
-        # script模式：后台异步执行
-        if body.mode == "script":
-            asyncio.create_task(_execute_script_run(run_id, case_scripts, body.timeout))
+        # 后台异步执行脚本
+        asyncio.create_task(_execute_script_run(run_id, case_scripts, body.timeout))
 
         cursor = await db.execute("SELECT * FROM runs WHERE id = ?", (run_id,))
         row = await cursor.fetchone()
@@ -111,16 +110,14 @@ async def create_run(body: RunCreate):
 
 @router.put("/runs/{run_id}/results/{result_id}", response_model=RunResultOut)
 async def update_run_result(run_id: str, result_id: str, body: RunResultUpdate):
-    """手动标记单条执行结果（仅manual模式）"""
+    """手动标记单条执行结果（允许覆盖脚本执行结果）"""
     db = await get_db()
     try:
-        # 检查run存在且为manual模式
+        # 检查run存在
         cursor = await db.execute("SELECT mode FROM runs WHERE id = ?", (run_id,))
         run_row = await cursor.fetchone()
         if not run_row:
             raise NotFoundException("执行记录不存在")
-        if run_row["mode"] != "manual":
-            raise ForbiddenException("仅手动模式可标记结果")
 
         # 检查result存在
         cursor = await db.execute("SELECT id FROM run_results WHERE id = ? AND run_id = ?", (result_id, run_id))
