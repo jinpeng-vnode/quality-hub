@@ -37,6 +37,7 @@ export interface TestCase {
   priority: CasePriority
   caseType: CaseType
   midsceneScript: string | null
+  timeout: number | null
   createdAt: string
   updatedAt: string
 }
