@@ -1,5 +1,5 @@
 # 阶段一：构建
-FROM node:18-slim AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
