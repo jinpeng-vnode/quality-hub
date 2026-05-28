@@ -163,26 +163,33 @@ export default defineComponent({
       router.push(`/projects/${projectId.value}/runs`)
     }
 
-    async function fetchData() {
-      loading.value = true
+    async function fetchData(silent = false) {
+      if (!silent) loading.value = true
       try {
         const [runRes, resultsRes, reportRes] = await Promise.all([
           api.get<TestRun>(`/runs/${runId.value}`),
           api.get<RunResult[]>(`/runs/${runId.value}/results`),
           api.get(`/runs/${runId.value}/report`),
         ])
-        run.value = runRes.data
-        results.value = resultsRes.data
-        report.value = reportRes.data
+        // 只在数据变化时更新，避免不必要的 DOM 重渲染
+        if (JSON.stringify(run.value) !== JSON.stringify(runRes.data)) {
+          run.value = runRes.data
+        }
+        if (JSON.stringify(results.value) !== JSON.stringify(resultsRes.data)) {
+          results.value = resultsRes.data
+        }
+        if (JSON.stringify(report.value) !== JSON.stringify(reportRes.data)) {
+          report.value = reportRes.data
+        }
       } catch { /* 拦截器处理 */ }
-      finally { loading.value = false }
+      finally { if (!silent) loading.value = false }
     }
 
     async function markResult(record: RunResult, status: 'passed' | 'failed') {
       try {
         await api.put(`/runs/${runId.value}/results/${record.id}`, { status, errorMessage: '', durationMs: 0 })
         message.success(`已标记为${status === 'passed' ? '通过' : '失败'}`)
-        fetchData()
+        fetchData(true)
       } catch { /* 拦截器处理 */ }
     }
 
@@ -200,7 +207,7 @@ export default defineComponent({
     function startAutoRefresh() {
       stopAutoRefresh()
       refreshTimer = setInterval(async () => {
-        await fetchData()
+        await fetchData(true)
         if (run.value && run.value.status !== 'running') {
           stopAutoRefresh()
         }
