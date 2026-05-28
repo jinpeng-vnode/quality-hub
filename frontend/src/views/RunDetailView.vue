@@ -59,14 +59,12 @@
             </template>
             <template v-if="column.key === 'action'">
               <a-space>
-                <template v-if="record.status === 'pending' && run?.mode === 'manual'">
-                  <a-button type="primary" size="small" @click="markResult(record, 'passed')">
-                    <CheckOutlined /> 通过
-                  </a-button>
-                  <a-button size="small" danger @click="markResult(record, 'failed')">
-                    <CloseOutlined /> 失败
-                  </a-button>
-                </template>
+                <a-button type="primary" size="small" @click="markResult(record, 'passed')" :disabled="record.status === 'running'">
+                  <CheckOutlined /> 通过
+                </a-button>
+                <a-button size="small" danger @click="markResult(record, 'failed')" :disabled="record.status === 'running'">
+                  <CloseOutlined /> 失败
+                </a-button>
                 <a-button v-if="record.status !== 'pending' && run?.mode === 'script'" size="small" @click="retryResult(record)" :loading="record._retrying">
                   <ReloadOutlined /> 重试
                 </a-button>
