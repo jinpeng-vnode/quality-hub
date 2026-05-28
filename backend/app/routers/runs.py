@@ -102,7 +102,7 @@ async def create_run(body: RunCreate):
 
         cursor = await db.execute("SELECT * FROM runs WHERE id = ?", (run_id,))
         row = await cursor.fetchone()
-        logger.info(f"创建执行记录: {run_id} (mode={body.mode}, 用例数={len(cases)})")
+        logger.info(f"创建执行记录: {run_id} (mode=script, 用例数={len(cases)})")
         return _row_to_run(row)
     finally:
         await db.close()
