@@ -1,6 +1,6 @@
 <template>
   <a-layout class="app-layout">
-    <a-layout-sider :width="200" :style="{ position: 'fixed', height: '100vh', left: 0, zIndex: 100 }">
+    <a-layout-sider :width="200" :style="{ position: 'fixed', height: '100vh', left: 0, zIndex: 1001 }">
       <div class="logo">QHub</div>
       <a-menu theme="dark" mode="inline" :selectedKeys="selectedKeys" @click="onMenuClick">
         <a-menu-item key="projects">

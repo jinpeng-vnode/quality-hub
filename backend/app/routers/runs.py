@@ -357,7 +357,9 @@ async def get_run_report(run_id: str):
         failed = sum(1 for r in results if r["status"] == "failed")
         skipped = sum(1 for r in results if r["status"] == "skipped")
         total = len(results)
-        pass_rate = round(passed / total * 100, 1) if total > 0 else 0.0
+        # 通过率排除 skipped 用例
+        effective = total - skipped
+        pass_rate = round(passed / effective * 100, 1) if effective > 0 else 0.0
 
         # 按功能点分组统计
         groups: dict[str, dict] = {}
@@ -531,11 +533,11 @@ async def _recalculate_run(db, run_id: str) -> None:
 
     now = datetime.now(_SHANGHAI_TZ).isoformat()
     if pending == 0:
-        # 全部完成：有失败则 failed，全 skipped 则 completed，否则 passed
+        # 全部完成：有失败则 failed，全 skipped 则 skipped，否则 passed
         if failed > 0:
             run_status = "failed"
         elif passed == 0 and skipped > 0:
-            run_status = "completed"
+            run_status = "skipped"
         else:
             run_status = "passed"
         await db.execute(
