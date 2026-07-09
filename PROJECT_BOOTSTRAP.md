@@ -13,6 +13,7 @@
 - 执行入口：仓库根目录 `Jenkinsfile`
 - 操作方法：老板在 Mac Mini 本地 Jenkins 中手动触发 pipeline
 - 禁止任何角色通过 paramiko/ssh 连接 192.168.3.9 做部署操作
+- 生产恢复只允许 Jenkins 使用既有 docker-compose/gateway 链路（对外网关端口 5400）；`3000` 仅作为本地前端开发端口，禁止作为生产端口操作或占用
 
 ## 环境依赖
 - Docker：是（推荐使用 docker-compose 一键启动）
