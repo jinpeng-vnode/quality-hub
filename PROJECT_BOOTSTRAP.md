@@ -5,6 +5,14 @@
 - 主分支：dev
 - 后端目录：`backend/`
 - 前端目录：`frontend/`
+- 线上地址：https://quality-hub.todonot.com/
+- 部署服务器：Mac Mini (192.168.3.9)
+
+## ⛔ 部署方式（重要）
+- **部署方式已改为 Jenkins pipeline，禁止 SSH 直接操作宿主机**
+- 执行入口：仓库根目录 `Jenkinsfile`
+- 操作方法：老板在 Mac Mini 本地 Jenkins 中手动触发 pipeline
+- 禁止任何角色通过 paramiko/ssh 连接 192.168.3.9 做部署操作
 
 ## 环境依赖
 - Docker：是（推荐使用 docker-compose 一键启动）
