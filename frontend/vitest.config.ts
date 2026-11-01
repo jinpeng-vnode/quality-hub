@@ -8,5 +8,7 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['tests/**/*.test.ts'],
     setupFiles: ['tests/setup.ts'],
+    // 路由守卫测试会真的加载懒加载页面（报告页带 echarts），并行时首次编译可能超过默认的 5 秒
+    testTimeout: 30000,
   },
 })
