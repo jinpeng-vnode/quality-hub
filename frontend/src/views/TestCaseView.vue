@@ -24,6 +24,7 @@
           </template>
           <template v-if="column.key === 'priority'">
             <a-tag :color="priorityColor(record.priority)">{{ priorityText(record.priority) }}</a-tag>
+            <a-tag v-if="record.smoke" color="purple">冒烟</a-tag>
           </template>
           <template v-if="column.key === 'action'">
             <a-space :size="8">
@@ -74,6 +75,9 @@
             <a-select-option value="medium">中</a-select-option>
             <a-select-option value="low">低</a-select-option>
           </a-select>
+        </a-form-item>
+        <a-form-item label="冒烟用例">
+          <a-checkbox v-model:checked="form.smoke">项目管理登记部署后自动执行</a-checkbox>
         </a-form-item>
         <a-form-item label="超时时间（秒）">
           <a-input-number v-model:value="form.timeout" :min="5" :max="300" placeholder="默认60秒" style="width: 200px;" />
@@ -146,7 +150,7 @@ import api from '../api'
 const columns = [
   { title: 'ID', dataIndex: 'id', key: 'id', width: 100, fixed: 'left' as const },
   { title: '用例标题', dataIndex: 'title', key: 'title', ellipsis: true },
-  { title: '优先级', key: 'priority', dataIndex: 'priority', width: 100 },
+  { title: '优先级', key: 'priority', dataIndex: 'priority', width: 140 },
   { title: '操作', key: 'action', width: 120, fixed: 'right' as const },
 ]
 
@@ -176,6 +180,7 @@ export default defineComponent({
       expectedResult: '',
       priority: 'medium' as string,
       midsceneScript: '',
+      smoke: false,
       timeout: null as number | null,
     })
     const formSteps = ref<string[]>([''])
@@ -213,6 +218,7 @@ export default defineComponent({
       form.expectedResult = record.expectedResult || ''
       form.priority = record.priority
       form.midsceneScript = record.midsceneScript || ''
+      form.smoke = !!record.smoke
       form.timeout = record.timeout || null
       showDrawer.value = true
     }
@@ -225,6 +231,7 @@ export default defineComponent({
       form.expectedResult = ''
       form.priority = 'medium'
       form.midsceneScript = ''
+      form.smoke = false
       form.timeout = null
     }
 
@@ -241,6 +248,7 @@ export default defineComponent({
         expectedResult: form.expectedResult,
         priority: form.priority,
         midsceneScript: form.midsceneScript,
+        smoke: form.smoke,
       }
       try {
         if (editingCase.value) {

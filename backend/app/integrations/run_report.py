@@ -12,6 +12,7 @@ import httpx
 from loguru import logger
 
 from app.database import get_db
+from app.integrations import pm as pm_mod
 from app.integrations.pm import PMClient, PMError
 
 _MAX_FAILED_LISTED = 10
@@ -45,7 +46,7 @@ def build_comment(project_id: str, run_id: str, rows: list[dict]) -> str:
 
 async def report_run(run_id: str, transport: httpx.AsyncBaseTransport | None = None) -> dict[str, str]:
     """把一次 run 的结果写到关联需求下。返回 {需求编号: "ok" 或错误说明}；客户端未启用返回 {}"""
-    client = PMClient.from_env(transport)
+    client = PMClient.from_env(transport or pm_mod._transport_override)
     if client is None:
         return {}
     db = await get_db()

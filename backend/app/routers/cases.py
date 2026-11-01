@@ -29,7 +29,7 @@ def _row_to_case(r) -> CaseOut:
         id=r["id"], featureId=r["feature_id"], title=r["title"],
         steps=steps, expectedResult=r["expected_result"] or None,
         priority=r["priority"],
-        midsceneScript=r["midscene_script"],
+        midsceneScript=r["midscene_script"], smoke=bool(r["is_smoke"]),
         createdAt=r["created_at"], updatedAt=r["updated_at"],
     )
 
@@ -53,10 +53,10 @@ async def create_case(body: CaseCreate):
 
         case_id = str(uuid.uuid4())
         await db.execute(
-            """INSERT INTO cases (id, feature_id, title, steps, expected_result, priority, case_type, midscene_script)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO cases (id, feature_id, title, steps, expected_result, priority, case_type, midscene_script, is_smoke)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (case_id, body.feature_id, body.title, json.dumps(body.steps),
-             body.expected_result, body.priority.value, "e2e", body.midscene_script),
+             body.expected_result, body.priority.value, "e2e", body.midscene_script, int(body.smoke)),
         )
         await db.commit()
         cursor = await db.execute("SELECT * FROM cases WHERE id = ?", (case_id,))
@@ -86,10 +86,10 @@ async def create_cases_batch(body: list[CaseCreate]):
 
             case_id = str(uuid.uuid4())
             await db.execute(
-                """INSERT INTO cases (id, feature_id, title, steps, expected_result, priority, case_type, midscene_script)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO cases (id, feature_id, title, steps, expected_result, priority, case_type, midscene_script, is_smoke)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (case_id, item.feature_id, item.title, json.dumps(item.steps),
-                 item.expected_result, item.priority.value, "e2e", item.midscene_script),
+                 item.expected_result, item.priority.value, "e2e", item.midscene_script, int(item.smoke)),
             )
             cursor = await db.execute("SELECT * FROM cases WHERE id = ?", (case_id,))
             results.append(_row_to_case(await cursor.fetchone()))
@@ -164,6 +164,9 @@ async def update_case(case_id: str, body: CaseUpdate):
         if body.midscene_script is not None:
             updates.append("midscene_script = ?")
             params.append(body.midscene_script)
+        if body.smoke is not None:
+            updates.append("is_smoke = ?")
+            params.append(int(body.smoke))
 
         if updates:
             updates.append("updated_at = datetime('now', '+8 hours')")

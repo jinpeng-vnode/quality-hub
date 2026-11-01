@@ -56,6 +56,8 @@
             </template>
             <template v-if="column.key === 'status'">
               <a-tag :color="resultStatusColor(record.status)">{{ statusText(record.status) }}</a-tag>
+              <a-tag v-if="record.regressionPending" color="orange">待回归</a-tag>
+              <a-tag v-if="record.pmBugKey" color="red">{{ record.pmBugKey }}</a-tag>
             </template>
             <template v-if="column.key === 'action'">
               <a-space>
@@ -67,6 +69,9 @@
                 </a-button>
                 <a-button v-if="record.status !== 'pending'" size="small" @click="retryResult(record)" :loading="record._retrying">
                   <ReloadOutlined /> 重试
+                </a-button>
+                <a-button v-if="record.status === 'failed' && !record.pmBugKey" size="small" @click="openBugDraft(record)">
+                  <BugOutlined /> 提缺陷
                 </a-button>
               </a-space>
             </template>
@@ -89,15 +94,34 @@
         </a-table>
       </div>
     </a-spin>
+
+    <!-- 提缺陷：先预览草稿，测试人员确认后才在项目管理里建 -->
+    <a-modal v-model:open="bugModal.open" title="确认提缺陷到项目管理" okText="确认提交" :confirmLoading="bugModal.submitting" @ok="submitBug" width="640px">
+      <a-form layout="vertical">
+        <a-form-item label="标题" required>
+          <a-input v-model:value="bugModal.draft.title" />
+        </a-form-item>
+        <a-form-item label="严重程度">
+          <a-select v-model:value="bugModal.draft.severity">
+            <a-select-option value="major">严重</a-select-option>
+            <a-select-option value="normal">一般</a-select-option>
+            <a-select-option value="minor">轻微</a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="描述">
+          <a-textarea v-model:value="bugModal.draft.description" :rows="10" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted } from 'vue'
+import { defineComponent, ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { CheckOutlined, CloseOutlined, ReloadOutlined } from '@ant-design/icons-vue'
-import type { TestRun, RunResult } from '../types'
+import { CheckOutlined, CloseOutlined, ReloadOutlined, BugOutlined } from '@ant-design/icons-vue'
+import type { TestRun, RunResult, BugDraft } from '../types'
 import api from '../api'
 
 const resultColumns = [
@@ -105,7 +129,7 @@ const resultColumns = [
   { title: '状态', key: 'status', dataIndex: 'status', width: 100 },
   { title: '耗时(ms)', dataIndex: 'durationMs', key: 'durationMs', width: 100 },
   { title: '错误信息', dataIndex: 'errorMessage', key: 'errorMessage', ellipsis: true },
-  { title: '操作', key: 'action', width: 200 },
+  { title: '操作', key: 'action', width: 280 },
 ]
 
 function statusColor(s?: string) {
@@ -130,7 +154,7 @@ function formatTime(t: string | null | undefined): string {
 
 export default defineComponent({
   name: 'RunDetailView',
-  components: { CheckOutlined, CloseOutlined, ReloadOutlined },
+  components: { CheckOutlined, CloseOutlined, ReloadOutlined, BugOutlined },
   setup() {
     const route = useRoute()
     const router = useRouter()
@@ -200,6 +224,35 @@ export default defineComponent({
       } catch { /* 拦截器处理 */ }
     }
 
+    const bugModal = reactive({
+      open: false,
+      submitting: false,
+      resultId: '' as string,
+      draft: { title: '', description: '', severity: 'normal' } as BugDraft,
+    })
+    async function openBugDraft(record: RunResult) {
+      try {
+        const { data } = await api.get<BugDraft>(`/runs/${runId.value}/results/${record.id}/bug-draft`)
+        bugModal.resultId = String(record.id)
+        bugModal.draft = data
+        bugModal.open = true
+      } catch { /* 拦截器处理 */ }
+    }
+    async function submitBug() {
+      if (!bugModal.draft.title.trim()) {
+        message.warning('请填写缺陷标题')
+        return
+      }
+      bugModal.submitting = true
+      try {
+        const { data } = await api.post<{ pmBugKey: string }>(`/runs/${runId.value}/results/${bugModal.resultId}/bug`, bugModal.draft)
+        message.success(`已提缺陷 ${data.pmBugKey}`)
+        bugModal.open = false
+        fetchData(true)
+      } catch { /* 拦截器处理 */ }
+      finally { bugModal.submitting = false }
+    }
+
     // 自动刷新：执行中时每 5 秒刷新一次
     let refreshTimer: ReturnType<typeof setInterval> | null = null
     function startAutoRefresh() {
@@ -221,7 +274,7 @@ export default defineComponent({
       })
     })
 
-    return { run, results, groupedResults, loading, hasPending, passRate, report, resultColumns, statusColor, resultStatusColor, statusText, formatTime, goBack, markResult, retryResult }
+    return { run, results, groupedResults, loading, hasPending, passRate, report, resultColumns, statusColor, resultStatusColor, statusText, formatTime, goBack, markResult, retryResult, bugModal, openBugDraft, submitBug }
   },
 })
 </script>

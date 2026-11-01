@@ -93,12 +93,20 @@ async def init_db() -> None:
             "ALTER TABLE run_results ADD COLUMN log TEXT DEFAULT ''",
             "ALTER TABLE run_results ADD COLUMN screenshots TEXT DEFAULT '[]'",
             "ALTER TABLE features ADD COLUMN pm_item_key TEXT DEFAULT NULL",
+            "ALTER TABLE projects ADD COLUMN pm_project_key TEXT DEFAULT NULL",
+            "ALTER TABLE cases ADD COLUMN is_smoke INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE run_results ADD COLUMN pm_bug_key TEXT DEFAULT NULL",
+            "ALTER TABLE run_results ADD COLUMN regression_pending INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE runs ADD COLUMN trigger_ref TEXT DEFAULT NULL",
         ]
         for sql in migrations:
             try:
                 await db.execute(sql)
             except Exception:
                 pass  # 列已存在，忽略
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_pm_key ON projects(pm_project_key) WHERE pm_project_key IS NOT NULL"
+        )
         await db.commit()
 
         # 数据迁移：将旧的 steps 纯文本转为 JSON 数组格式

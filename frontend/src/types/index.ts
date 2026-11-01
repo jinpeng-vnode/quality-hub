@@ -4,11 +4,12 @@ export interface Project {
   name: string
   repoUrl: string | null
   description: string | null
+  pmProjectKey: string | null
   createdAt: string
   updatedAt: string
 }
 
-export type ProjectCreate = Pick<Project, 'name' | 'description'> & { repoUrl?: string }
+export interface ProjectImport { pmProjectKey: string; repoUrl?: string }
 
 // 功能点
 export type FeatureStatus = 'pending' | 'partial' | 'covered'
@@ -36,6 +37,7 @@ export interface TestCase {
   expectedResult: string | null
   priority: CasePriority
   midsceneScript: string | null
+  smoke: boolean
   timeout: number | null
   createdAt: string
   updatedAt: string
@@ -71,7 +73,11 @@ export interface RunResult {
   durationMs: number | null
   log: string
   screenshots: string[]
+  pmBugKey: string | null
+  regressionPending: boolean
 }
+
+export interface BugDraft { title: string; description: string; severity: 'major' | 'normal' | 'minor' }
 
 // 报告看板
 export interface DashboardData {

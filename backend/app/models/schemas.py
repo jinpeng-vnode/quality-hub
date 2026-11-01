@@ -38,17 +38,16 @@ class RunStatus(str, Enum):
 
 
 # === 项目 ===
-class ProjectCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
+class ProjectImport(BaseModel):
+    """从项目管理导入项目：只给项目标识，名称和描述从项目管理取"""
+    pm_project_key: str = Field(..., alias="pmProjectKey", pattern=r"^[A-Z][A-Z0-9]{1,9}$")
     repo_url: str | None = Field(None, alias="repoUrl")
-    description: str | None = None
     model_config = {"populate_by_name": True}
 
 
 class ProjectUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=100)
+    """名称、描述以项目管理为准，这里只能改仓库地址"""
     repo_url: str | None = Field(None, alias="repoUrl")
-    description: str | None = None
     model_config = {"populate_by_name": True}
 
 
@@ -57,6 +56,7 @@ class ProjectOut(BaseModel):
     name: str
     repo_url: str | None = Field(None, alias="repoUrl")
     description: str | None
+    pm_project_key: str | None = Field(None, alias="pmProjectKey")
     created_at: str = Field(alias="createdAt")
     updated_at: str = Field(alias="updatedAt")
     model_config = {"populate_by_name": True}
@@ -102,6 +102,7 @@ class CaseCreate(BaseModel):
     expected_result: str = Field(..., alias="expectedResult", min_length=1, description="预期结果")
     priority: CasePriority = CasePriority.medium
     midscene_script: str = Field(..., alias="midsceneScript", min_length=1, description="Playwright 脚本")
+    smoke: bool = Field(False, description="冒烟用例：项目管理登记部署后自动执行")
     model_config = {"populate_by_name": True}
 
 
@@ -111,6 +112,7 @@ class CaseUpdate(BaseModel):
     expected_result: str | None = Field(None, alias="expectedResult")
     priority: CasePriority | None = None
     midscene_script: str | None = Field(None, alias="midsceneScript")
+    smoke: bool | None = None
     model_config = {"populate_by_name": True}
 
 
@@ -122,6 +124,7 @@ class CaseOut(BaseModel):
     expected_result: str | None = Field(None, alias="expectedResult")
     priority: CasePriority
     midscene_script: str | None = Field(None, alias="midsceneScript")
+    smoke: bool = False
     created_at: str = Field(alias="createdAt")
     updated_at: str = Field(alias="updatedAt")
     model_config = {"populate_by_name": True}
@@ -171,6 +174,16 @@ class RunResultOut(BaseModel):
     duration_ms: int | None = Field(None, alias="durationMs")
     log: str = Field(default="")
     screenshots: list[str] = Field(default_factory=list)
+    pm_bug_key: str | None = Field(None, alias="pmBugKey")
+    regression_pending: bool = Field(False, alias="regressionPending")
+    model_config = {"populate_by_name": True}
+
+
+class BugDraft(BaseModel):
+    """失败用例转缺陷：预览返回草稿，测试人员确认（可改标题和严重程度）后再提交"""
+    title: str = Field(..., min_length=1, max_length=200)
+    description: str = ""
+    severity: str = Field("normal", pattern=r"^(major|normal|minor)$")
     model_config = {"populate_by_name": True}
 
 

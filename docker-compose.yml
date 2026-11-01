@@ -12,6 +12,11 @@ services:
       - .env
     environment:
       - DATABASE_URL=sqlite:///data/quality_hub.db
+      # 项目管理联动：值由部署环境（Jenkins 凭据）传入，这里只透传变量名
+      - PM_BASE
+      - PM_TOKEN
+      - PM_WEBHOOK_SECRET
+      - QH_PUBLIC_URL
     restart: unless-stopped
 
   frontend:

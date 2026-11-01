@@ -5,7 +5,7 @@
       <span></span>
       <a-button type="primary" @click="showModal = true">
         <template #icon><PlusOutlined /></template>
-        新建项目
+        从项目管理导入
       </a-button>
     </div>
 
@@ -18,6 +18,7 @@
             <p class="project-desc">{{ p.description || '暂无描述' }}</p>
             <div class="project-meta">
               <span>{{ formatRelativeTime(p.updatedAt || p.createdAt) }}</span>
+              <span v-if="p.pmProjectKey">🔗 {{ p.pmProjectKey }}</span>
               <span v-if="p.repoUrl">📦 {{ p.repoUrl.split('/').pop() }}</span>
             </div>
             <div class="project-actions" @click.stop>
@@ -33,16 +34,13 @@
     </a-spin>
 
     <!-- 新建/编辑弹窗 -->
-    <a-modal v-model:open="showModal" :title="editingProject ? '编辑项目' : '新建项目'" @ok="handleSubmit" @cancel="resetForm">
+    <a-modal v-model:open="showModal" title="从项目管理导入项目" @ok="handleSubmit" @cancel="resetForm">
       <a-form :model="form" layout="vertical">
-        <a-form-item label="项目名称" required>
-          <a-input v-model:value="form.name" placeholder="请输入项目名称" />
+        <a-form-item label="项目标识" required extra="项目管理里的项目标识，如 FLEET；名称和描述从项目管理带过来">
+          <a-input v-model:value="form.pmProjectKey" placeholder="FLEET" />
         </a-form-item>
         <a-form-item label="仓库地址">
           <a-input v-model:value="form.repoUrl" placeholder="GitHub 仓库 URL" />
-        </a-form-item>
-        <a-form-item label="描述">
-          <a-textarea v-model:value="form.description" placeholder="请输入项目描述" :rows="3" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -54,7 +52,7 @@ import { defineComponent, ref, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue'
-import type { Project } from '../types'
+import type { Project, ProjectImport } from '../types'
 import api from '../api'
 
 // 相对时间格式化
@@ -80,8 +78,7 @@ export default defineComponent({
     const projects = ref<Project[]>([])
     const loading = ref(false)
     const showModal = ref(false)
-    const editingProject = ref<Project | null>(null)
-    const form = reactive({ name: '', repoUrl: '', description: '' })
+    const form = reactive({ pmProjectKey: '', repoUrl: '' })
 
     async function fetchProjects() {
       loading.value = true
@@ -97,26 +94,20 @@ export default defineComponent({
     }
 
     function resetForm() {
-      editingProject.value = null
-      form.name = ''
+      form.pmProjectKey = ''
       form.repoUrl = ''
-      form.description = ''
     }
 
     async function handleSubmit() {
-      if (!form.name.trim()) {
-        message.warning('请输入项目名称')
+      const key = form.pmProjectKey.trim().toUpperCase()
+      if (!/^[A-Z][A-Z0-9]{1,9}$/.test(key)) {
+        message.warning('项目标识应为 2～10 位大写字母或数字，以字母开头')
         return
       }
-      const payload = { name: form.name, repoUrl: form.repoUrl || undefined, description: form.description || undefined }
+      const payload: ProjectImport = { pmProjectKey: key, repoUrl: form.repoUrl || undefined }
       try {
-        if (editingProject.value) {
-          await api.put(`/projects/${editingProject.value.id}`, payload)
-          message.success('更新成功')
-        } else {
-          await api.post('/projects', payload)
-          message.success('创建成功')
-        }
+        await api.post('/projects/import', payload)
+        message.success('导入成功')
         showModal.value = false
         resetForm()
         fetchProjects()
@@ -133,7 +124,7 @@ export default defineComponent({
       } catch { /* 拦截器处理 */ }
     }
 
-    return { projects, loading, showModal, editingProject, form, formatRelativeTime, enterProject, resetForm, handleSubmit, deleteProject }
+    return { projects, loading, showModal, form, formatRelativeTime, enterProject, resetForm, handleSubmit, deleteProject }
   },
 })
 </script>

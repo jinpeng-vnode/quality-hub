@@ -43,17 +43,21 @@ def _row_to_run(r) -> RunOut:
 
 
 def _row_to_result(r) -> RunResultOut:
-    screenshots_raw = r["screenshots"] if "screenshots" in r.keys() else "[]"
+    """结果行转响应；行里带 case_title / feature_id / feature_title（联表查询）时一并填上"""
+    keys = r.keys()
     try:
-        screenshots = json.loads(screenshots_raw) if screenshots_raw else []
+        screenshots = json.loads(r["screenshots"]) if r["screenshots"] else []
     except (json.JSONDecodeError, TypeError):
         screenshots = []
+    joined = "case_title" in keys
     return RunResultOut(
         id=r["id"], runId=r["run_id"], caseId=r["case_id"],
+        caseTitle=(r["case_title"] or "") if joined else "",
+        featureId=(r["feature_id"] or "") if joined else "",
+        featureTitle=(r["feature_title"] or "未分类") if joined else "",
         status=r["status"], errorMessage=r["error_message"] or None,
-        durationMs=r["duration_ms"],
-        log=r["log"] if "log" in r.keys() else "",
-        screenshots=screenshots,
+        durationMs=r["duration_ms"], log=r["log"] or "", screenshots=screenshots,
+        pmBugKey=r["pm_bug_key"], regressionPending=bool(r["regression_pending"]),
     )
 
 
@@ -127,7 +131,7 @@ async def update_run_result(run_id: str, result_id: str, body: RunResultUpdate):
 
         # 更新result
         await db.execute(
-            "UPDATE run_results SET status = ?, error_message = ?, duration_ms = ? WHERE id = ?",
+            "UPDATE run_results SET status = ?, error_message = ?, duration_ms = ?, regression_pending = 0 WHERE id = ?",
             (body.status, body.error_message, body.duration_ms, result_id),
         )
         await db.commit()
@@ -243,7 +247,7 @@ async def retry_single_result(run_id: str, result_id: str):
             raise ForbiddenException("该用例无脚本，无法执行")
 
         # 重置状态为 pending
-        await db.execute("UPDATE run_results SET status = 'pending', error_message = '', log = '', screenshots = '[]', duration_ms = 0 WHERE id = ?", (result_id,))
+        await db.execute("UPDATE run_results SET status = 'pending', error_message = '', log = '', screenshots = '[]', duration_ms = 0, regression_pending = 0 WHERE id = ?", (result_id,))
         # 将 run 状态改回 running
         await db.execute("UPDATE runs SET status = 'running', finished_at = NULL WHERE id = ?", (run_id,))
         await db.commit()
@@ -255,20 +259,8 @@ async def retry_single_result(run_id: str, result_id: str):
             """SELECT rr.*, c.title as case_title, c.feature_id, f.title as feature_title
                FROM run_results rr LEFT JOIN cases c ON rr.case_id = c.id LEFT JOIN features f ON c.feature_id = f.id
                WHERE rr.id = ?""", (result_id,))
-        r = await cursor.fetchone()
-        screenshots_raw = r["screenshots"] if "screenshots" in r.keys() else "[]"
-        try:
-            screenshots = json.loads(screenshots_raw) if screenshots_raw else []
-        except (json.JSONDecodeError, TypeError):
-            screenshots = []
-        return RunResultOut(
-            id=r["id"], runId=r["run_id"], caseId=r["case_id"],
-            caseTitle=r["case_title"] or "", featureId=r["feature_id"] or "",
-            featureTitle=r["feature_title"] or "未分类",
-            status=r["status"], errorMessage=r["error_message"] or None,
-            durationMs=r["duration_ms"], log=r["log"] if "log" in r.keys() else "",
-            screenshots=screenshots,
-        )
+        return _row_to_result(await cursor.fetchone())
+
     finally:
         await db.close()
 
@@ -313,24 +305,8 @@ async def get_run_results(run_id: str):
                ORDER BY f.title, c.title""",
             (run_id,),
         )
-        results = []
-        for r in await cursor.fetchall():
-            screenshots_raw = r["screenshots"] if "screenshots" in r.keys() else "[]"
-            try:
-                screenshots = json.loads(screenshots_raw) if screenshots_raw else []
-            except (json.JSONDecodeError, TypeError):
-                screenshots = []
-            results.append(RunResultOut(
-                id=r["id"], runId=r["run_id"], caseId=r["case_id"],
-                caseTitle=r["case_title"] or "",
-                featureId=r["feature_id"] or "",
-                featureTitle=r["feature_title"] or "未分类",
-                status=r["status"], errorMessage=r["error_message"] or None,
-                durationMs=r["duration_ms"],
-                log=r["log"] if "log" in r.keys() else "",
-                screenshots=screenshots,
-            ))
-        return results
+        return [_row_to_result(r) for r in await cursor.fetchall()]
+
     finally:
         await db.close()
 

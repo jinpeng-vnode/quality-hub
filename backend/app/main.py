@@ -7,7 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from app.database import init_db
-from app.routers import projects, features, cases, runs, reports
+from app.integrations import webhook as pm_webhook
+from app.routers import projects, features, cases, runs, reports, bugs
 from app.utils.exceptions import register_exception_handlers
 
 
@@ -40,6 +41,8 @@ app.include_router(features.router, prefix="/api")
 app.include_router(cases.router, prefix="/api")
 app.include_router(runs.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
+app.include_router(bugs.router, prefix="/api")
+app.include_router(pm_webhook.router, prefix="/api")
 
 
 @app.get("/health")

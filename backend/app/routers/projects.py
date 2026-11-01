@@ -5,11 +5,14 @@
 from __future__ import annotations
 
 import uuid
+
+import httpx
 from fastapi import APIRouter
 from loguru import logger
 
 from app.database import get_db
-from app.models.schemas import ProjectCreate, ProjectUpdate, ProjectOut
+from app.integrations.pm import PMError, pm_error_to_app, require_client
+from app.models.schemas import ProjectImport, ProjectUpdate, ProjectOut
 from app.utils.exceptions import NotFoundException, ConflictException
 
 router = APIRouter(tags=["projects"])
@@ -18,30 +21,38 @@ router = APIRouter(tags=["projects"])
 def _row_to_project(r) -> ProjectOut:
     return ProjectOut(
         id=r["id"], name=r["name"], repoUrl=r["repo_url"] or None,
-        description=r["description"] or None,
+        description=r["description"] or None, pmProjectKey=r["pm_project_key"],
         createdAt=r["created_at"], updatedAt=r["updated_at"],
     )
 
 
-@router.post("/projects", response_model=ProjectOut)
-async def create_project(body: ProjectCreate):
-    """创建项目"""
+@router.post("/projects/import", response_model=ProjectOut)
+async def import_project(body: ProjectImport):
+    """从项目管理导入项目（项目只能这样建）：名称、描述取项目管理里的"""
+    client = require_client()
+    try:
+        pm_project = await client.get_project(body.pm_project_key)
+    except (PMError, httpx.HTTPError) as e:
+        raise pm_error_to_app(e)
+
     db = await get_db()
     try:
-        # TC-012: 项目名称唯一性检查
-        cursor = await db.execute("SELECT id FROM projects WHERE name = ?", (body.name,))
+        cursor = await db.execute(
+            "SELECT id FROM projects WHERE pm_project_key = ?", (body.pm_project_key,),
+        )
         if await cursor.fetchone():
-            raise ConflictException("项目名称已存在")
+            raise ConflictException(f"项目 {body.pm_project_key} 已导入")
 
         project_id = str(uuid.uuid4())
         await db.execute(
-            "INSERT INTO projects (id, name, repo_url, description) VALUES (?, ?, ?, ?)",
-            (project_id, body.name, body.repo_url or "", body.description or ""),
+            "INSERT INTO projects (id, name, repo_url, description, pm_project_key) VALUES (?, ?, ?, ?, ?)",
+            (project_id, pm_project["name"], body.repo_url or "", pm_project.get("description") or "",
+             body.pm_project_key),
         )
         await db.commit()
         cursor = await db.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
         row = await cursor.fetchone()
-        logger.info(f"创建项目: {body.name} (id={project_id})")
+        logger.info(f"从项目管理导入项目: {body.pm_project_key} (id={project_id})")
         return _row_to_project(row)
     finally:
         await db.close()
@@ -83,15 +94,9 @@ async def update_project(project_id: str, body: ProjectUpdate):
             raise NotFoundException(f"未找到 ID 为 {project_id} 的项目")
 
         updates, params = [], []
-        if body.name is not None:
-            updates.append("name = ?")
-            params.append(body.name)
         if body.repo_url is not None:
             updates.append("repo_url = ?")
             params.append(body.repo_url)
-        if body.description is not None:
-            updates.append("description = ?")
-            params.append(body.description)
 
         if updates:
             updates.append("updated_at = datetime('now', '+8 hours')")

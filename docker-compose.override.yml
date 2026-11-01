@@ -12,6 +12,14 @@ services:
 
   backend:
     ports: !override []
+    # 接入项目管理所在的 docker 网络，后端用 http://fleet-pm:8930 访问项目管理
+    networks:
+      - default
+      - fleet_default
 
   frontend:
     ports: !override []
+
+networks:
+  fleet_default:
+    external: true

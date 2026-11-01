@@ -54,3 +54,43 @@ class PMClient:
         data = await self._request("POST", f"/api/items/{item_key}/comments", json={"body": body})
         logger.info(f"项目管理评论已写入: {item_key} (comment={data.get('id')})")
         return data["id"]
+
+    async def get_project(self, project_key: str) -> dict:
+        """读项目：GET /api/projects/{key}，返回 key、name、description 等"""
+        return await self._request("GET", f"/api/projects/{project_key}")
+
+    async def create_bug(self, project_key: str, title: str, description: str, severity: str) -> dict:
+        """建缺陷：POST /api/projects/{key}/items，kind=bug，返回工作项（含 key）"""
+        body = {"kind": "bug", "title": title, "description": description, "severity": severity}
+        data = await self._request("POST", f"/api/projects/{project_key}/items", json=body)
+        logger.info(f"项目管理缺陷已建: {data.get('key')}")
+        return data
+
+
+def require_client() -> PMClient:
+    """要用项目管理时调用；没配 PM_BASE / PM_TOKEN 就报 503"""
+    from app.utils.exceptions import AppException
+
+    client = PMClient.from_env(_transport_override)
+    if client is None:
+        raise AppException("PM_DISABLED", "未配置项目管理（PM_BASE、PM_TOKEN）", status_code=503)
+    return client
+
+
+# 测试用：替换出站传输层，换成假的项目管理
+_transport_override: httpx.AsyncBaseTransport | None = None
+
+
+def set_transport_for_test(transport: httpx.AsyncBaseTransport | None) -> None:
+    global _transport_override
+    _transport_override = transport
+
+
+def pm_error_to_app(e: Exception):
+    """把项目管理的错误转成 quality-hub 的统一错误（502），不带令牌"""
+    from app.utils.exceptions import AppException
+
+    if isinstance(e, PMError):
+        status = 404 if e.status == 404 else 502
+        return AppException("PM_ERROR", str(e), status_code=status)
+    return AppException("PM_UNREACHABLE", f"连不上项目管理: {type(e).__name__}", status_code=502)
