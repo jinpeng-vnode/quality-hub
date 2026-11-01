@@ -30,7 +30,7 @@ export type CasePriority = 'high' | 'medium' | 'low'
 
 export interface TestCase {
   id: number
-  featureId: number
+  featureId: string
   title: string
   steps: string[]
   expectedResult: string | null

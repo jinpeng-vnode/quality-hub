@@ -53,7 +53,7 @@
           <a-input v-model:value="form.title" placeholder="请输入用例标题" />
         </a-form-item>
         <a-form-item label="测试步骤" required>
-          <div v-for="(step, index) in formSteps" :key="index" style="display: flex; align-items: center; margin-bottom: 8px;">
+          <div v-for="(_step, index) in formSteps" :key="index" style="display: flex; align-items: center; margin-bottom: 8px;">
             <span style="margin-right: 8px; color: rgba(0,0,0,0.45);">{{ index + 1 }}.</span>
             <a-input v-model:value="formSteps[index]" placeholder="输入步骤" style="flex: 1;" />
             <a-button type="link" danger size="small" @click="formSteps.splice(index, 1)" :disabled="formSteps.length <= 1" style="margin-left: 4px;">
