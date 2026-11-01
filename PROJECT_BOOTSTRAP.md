@@ -64,6 +64,13 @@ curl http://localhost:8000/health
 curl http://localhost:3000
 ```
 
+## 脚本表
+| 脚本 | 用途 | 用法 |
+|------|------|------|
+| scripts/ui-check.mjs | 前端一键检查：类型检查、组件测试（vitest，假 api，不连后端）、打包；只输出结论和失败原文 | 仓库根目录 `node scripts/ui-check.mjs` |
+
+前端组件测试放在 `frontend/tests/<页面名>.test.ts`，公共工具见 `frontend/tests/helpers.ts`。
+
 ## 加速源配置
 - 后端 uv：清华源（`backend/uv.toml`）
 - 前端 yarn：淘宝源（`frontend/.yarnrc`）
