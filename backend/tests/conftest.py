@@ -21,12 +21,27 @@ class FakePM:
         self.calls: list[dict] = []
         self.fail_keys: set[str] = set()
         self.bug_seq = 100
+        self.logout_cookie: str | None = None
+        self.logout_status = 200
 
     def handler(self, req: httpx.Request) -> httpx.Response:
         parts = req.url.path.strip("/").split("/")  # api, projects|items, key, ...
         body = json.loads(req.content) if req.content else None
         self.calls.append({"method": req.method, "path": req.url.path,
                            "auth": req.headers.get("authorization"), "body": body})
+        if req.url.path == "/api/auth/login":
+            self.calls[-1]["body"] = {"username": body["username"], "password": "***"}
+            if req.headers.get("x-requested-with") != "pm":
+                return httpx.Response(403, json={"error": {"code": "forbidden", "message": "缺少 CSRF 头"}})
+            if body["username"] == "bot":
+                return httpx.Response(403, json={"error": {"code": "forbidden", "message": "机器人账号不能在网页登录，请用 API 令牌"}})
+            if body["password"] != "right-password":
+                return httpx.Response(401, json={"error": {"code": "unauthorized", "message": "账号或密码错误"}})
+            return httpx.Response(200, json={"id": 7, "username": body["username"], "display_name": "测试员"},
+                                  headers={"set-cookie": "pm_session=pm-sess-abc; Path=/; HttpOnly"})
+        if req.url.path == "/api/auth/logout":
+            self.logout_cookie = req.headers.get("cookie")
+            return httpx.Response(self.logout_status, json={"ok": True})
         key = parts[2] if len(parts) > 2 else ""
         if key in self.fail_keys:
             return httpx.Response(404, json={"error": {"code": "not_found", "message": "不存在"}})
@@ -62,10 +77,21 @@ def pm():
 
 
 @pytest.fixture
-def client(pm):
+def anon(pm):
+    """没登录的客户端（带 CSRF 头）"""
+    from app.auth.routes import reset_rate_limit
     from app.main import app
-    with TestClient(app) as c:
+    reset_rate_limit()
+    with TestClient(app, headers={"X-Requested-With": "qh"}) as c:
         yield c
+
+
+@pytest.fixture
+def client(anon):
+    """已登录的客户端"""
+    r = anon.post("/api/auth/login", json={"username": "tester", "password": "right-password"})
+    assert r.status_code == 200, r.text
+    yield anon
 
 
 def import_project(c: TestClient, key: str = "FLEET") -> str:

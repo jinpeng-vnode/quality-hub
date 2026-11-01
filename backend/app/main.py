@@ -6,6 +6,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
+from app.auth import routes as auth_routes
+from app.auth.middleware import require_auth
 from app.database import init_db
 from app.integrations import webhook as pm_webhook
 from app.routers import projects, features, cases, runs, reports, bugs
@@ -26,16 +28,20 @@ app = FastAPI(title="Quality Hub API", version="0.1.0", lifespan=lifespan)
 # 注册统一异常处理
 register_exception_handlers(app)
 
-# CORS 配置
+# 唯一的鉴权关口（放行名单和 CSRF 校验都在 app/auth/middleware.py）
+app.middleware("http")(require_auth)
+
+# CORS：前端经同源的 /api 反代访问，不需要跨站带 Cookie，所以不允许携带凭据
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # 注册路由
+app.include_router(auth_routes.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")
 app.include_router(features.router, prefix="/api")
 app.include_router(cases.router, prefix="/api")

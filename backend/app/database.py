@@ -83,6 +83,14 @@ async def init_db() -> None:
                 FOREIGN KEY (run_id) REFERENCES runs(id),
                 FOREIGN KEY (case_id) REFERENCES cases(id)
             );
+
+            CREATE TABLE IF NOT EXISTS sessions (
+                token_hash TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                username TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            );
         """)
         await db.commit()
 

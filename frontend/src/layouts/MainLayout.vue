@@ -38,6 +38,10 @@
         <!-- 页面标题 -->
         <div class="page-header">
           <h1 class="page-title">{{ pageTitle }}</h1>
+          <a-space v-if="user">
+            <span class="user-name">{{ user.displayName }}</span>
+            <a-button size="small" @click="onLogout">退出</a-button>
+          </a-space>
         </div>
         <!-- 页面内容 -->
         <router-view />
@@ -57,6 +61,7 @@ import {
   BarChartOutlined,
 } from '@ant-design/icons-vue'
 import { useProjectStore } from '../stores/project'
+import { useAuthStore } from '../stores/auth'
 
 const titleMap: Record<string, string> = {
   projects: '项目管理',
@@ -73,6 +78,12 @@ export default defineComponent({
     const router = useRouter()
     const route = useRoute()
     const projectStore = useProjectStore()
+    const auth = useAuthStore()
+    const user = computed(() => auth.user)
+    async function onLogout() {
+      await auth.logout()
+      router.replace({ name: 'Login' })
+    }
 
     const projectId = computed(() => route.params.projectId as string | undefined)
     const currentProject = computed(() => projectStore.currentProject)
@@ -114,7 +125,7 @@ export default defineComponent({
       }
     }
 
-    return { selectedKeys, pageTitle, projectId, currentProject, onMenuClick }
+    return { selectedKeys, pageTitle, projectId, currentProject, onMenuClick, user, onLogout }
   },
 })
 </script>
@@ -124,6 +135,7 @@ export default defineComponent({
 .logo { height: 32px; margin: 16px; color: #fff; font-size: 18px; font-weight: bold; text-align: center; line-height: 32px; }
 .app-content { padding: 24px; min-width: 960px; }
 .breadcrumb { margin-bottom: 8px; }
-.page-header { margin-bottom: 24px; }
+.page-header { margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; }
+.user-name { color: rgba(0, 0, 0, 0.65); }
 .page-title { font-size: 20px; font-weight: 600; margin: 0; color: rgba(0, 0, 0, 0.88); }
 </style>

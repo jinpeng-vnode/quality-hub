@@ -17,6 +17,8 @@ services:
       - PM_TOKEN
       - PM_WEBHOOK_SECRET
       - QH_PUBLIC_URL
+      - QH_COOKIE_SECURE
+      - QH_SESSION_HOURS
     restart: unless-stopped
 
   frontend:

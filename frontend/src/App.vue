@@ -1,11 +1,13 @@
 <template>
   <a-config-provider :theme="theme" :locale="zhCN">
-    <MainLayout />
+    <router-view v-if="isPublic" />
+    <MainLayout v-else />
   </a-config-provider>
 </template>
 
 <script lang="ts">
-import { defineComponent } from 'vue'
+import { computed, defineComponent } from 'vue'
+import { useRoute } from 'vue-router'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import MainLayout from './layouts/MainLayout.vue'
 
@@ -31,7 +33,9 @@ export default defineComponent({
   name: 'App',
   components: { MainLayout },
   setup() {
-    return { theme, zhCN }
+    const route = useRoute()
+    const isPublic = computed(() => !!route.meta?.public)
+    return { theme, zhCN, isPublic }
   },
 })
 </script>
