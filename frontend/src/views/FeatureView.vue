@@ -53,6 +53,9 @@
         <a-form-item label="描述">
           <a-textarea v-model:value="form.description" :rows="3" />
         </a-form-item>
+        <a-form-item label="关联需求编号" extra="项目管理里的需求编号，如 FLEET-12；留空表示不关联">
+          <a-input v-model:value="form.pmItemKey" placeholder="FLEET-12" />
+        </a-form-item>
       </a-form>
     </a-modal>
   </div>
@@ -68,6 +71,7 @@ import api from '../api'
 
 const columns = [
   { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true },
+  { title: '关联需求', dataIndex: 'pmItemKey', key: 'pmItemKey', width: 120 },
   { title: '状态', key: 'status', dataIndex: 'status', width: 100 },
   { title: '用例数', dataIndex: 'caseCount', key: 'caseCount', width: 80 },
   { title: '操作', key: 'action', width: 150, fixed: 'right' as const },
@@ -93,7 +97,7 @@ export default defineComponent({
     const showModal = ref(false)
     const editingFeature = ref<Feature | null>(null)
     const filters = reactive({ status: undefined as string | undefined })
-    const form = reactive({ title: '', description: '' })
+    const form = reactive({ title: '', description: '', pmItemKey: '' })
 
     function goToCases(featureId: number) {
       router.push({ name: 'Cases', params: { projectId: projectId.value }, query: { featureId: String(featureId) } })
@@ -114,6 +118,7 @@ export default defineComponent({
       editingFeature.value = record
       form.title = record.title
       form.description = record.description || ''
+      form.pmItemKey = record.pmItemKey || ''
       showModal.value = true
     }
 
@@ -121,6 +126,7 @@ export default defineComponent({
       editingFeature.value = null
       form.title = ''
       form.description = ''
+      form.pmItemKey = ''
     }
 
     async function handleSubmit() {
@@ -128,12 +134,17 @@ export default defineComponent({
         message.warning('请填写功能点标题')
         return
       }
+      const pmItemKey = form.pmItemKey.trim().toUpperCase()
+      if (pmItemKey && !/^[A-Z][A-Z0-9_]*-[0-9]+$/.test(pmItemKey)) {
+        message.warning('需求编号格式应为 FLEET-12 这样')
+        return
+      }
       try {
         if (editingFeature.value) {
-          await api.put(`/features/${editingFeature.value.id}`, { title: form.title, description: form.description })
+          await api.put(`/features/${editingFeature.value.id}`, { title: form.title, description: form.description, pmItemKey })
           message.success('更新成功')
         } else {
-          await api.post('/features', { projectId: projectId.value, title: form.title, description: form.description })
+          await api.post('/features', { projectId: projectId.value, title: form.title, description: form.description, pmItemKey: pmItemKey || null })
           message.success('创建成功')
         }
         showModal.value = false

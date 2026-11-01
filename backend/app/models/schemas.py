@@ -7,6 +7,9 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 from enum import Enum
 
+# 项目管理的工作项编号，如 FLEET-12
+PM_ITEM_KEY_PATTERN = r"^[A-Z][A-Z0-9_]*-[0-9]+$"
+
 
 # === 枚举 ===
 class FeatureStatus(str, Enum):
@@ -65,6 +68,7 @@ class FeatureCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     description: str | None = None
     source: str | None = None
+    pm_item_key: str | None = Field(None, alias="pmItemKey", pattern=PM_ITEM_KEY_PATTERN)
     model_config = {"populate_by_name": True}
 
 
@@ -72,6 +76,8 @@ class FeatureUpdate(BaseModel):
     title: str | None = Field(None, max_length=200)
     description: str | None = None
     status: FeatureStatus | None = None
+    # 不传 = 不改；传空串 = 解除关联；传编号 = 关联到这个需求
+    pm_item_key: str | None = Field(None, alias="pmItemKey", pattern=PM_ITEM_KEY_PATTERN + "|^$")
     model_config = {"populate_by_name": True}
 
 
@@ -81,6 +87,7 @@ class FeatureOut(BaseModel):
     title: str
     description: str | None
     source: str | None
+    pm_item_key: str | None = Field(None, alias="pmItemKey")
     status: FeatureStatus
     case_count: int = Field(0, alias="caseCount")
     created_at: str = Field(alias="createdAt")

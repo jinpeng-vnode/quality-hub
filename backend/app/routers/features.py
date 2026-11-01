@@ -21,7 +21,7 @@ async def _row_to_feature(db, r) -> FeatureOut:
     count_row = await cursor.fetchone()
     return FeatureOut(
         id=r["id"], projectId=r["project_id"], title=r["title"],
-        description=r["description"] or None, source=r["source"],
+        description=r["description"] or None, source=r["source"], pmItemKey=r["pm_item_key"],
         status=r["status"], caseCount=count_row["c"], createdAt=r["created_at"],
     )
 
@@ -45,8 +45,8 @@ async def create_feature(body: FeatureCreate):
 
         feature_id = str(uuid.uuid4())
         await db.execute(
-            "INSERT INTO features (id, project_id, title, description, source) VALUES (?, ?, ?, ?, ?)",
-            (feature_id, body.project_id, body.title, body.description or "", body.source),
+            "INSERT INTO features (id, project_id, title, description, source, pm_item_key) VALUES (?, ?, ?, ?, ?, ?)",
+            (feature_id, body.project_id, body.title, body.description or "", body.source, body.pm_item_key),
         )
         await db.commit()
         cursor = await db.execute("SELECT * FROM features WHERE id = ?", (feature_id,))
@@ -105,6 +105,9 @@ async def update_feature(feature_id: str, body: FeatureUpdate):
         if body.status is not None:
             updates.append("status = ?")
             params.append(body.status.value)
+        if body.pm_item_key is not None:
+            updates.append("pm_item_key = ?")
+            params.append(body.pm_item_key or None)
 
         if updates:
             params.append(feature_id)

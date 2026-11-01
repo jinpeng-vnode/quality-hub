@@ -21,6 +21,7 @@ from fastapi import APIRouter, Query
 from loguru import logger
 
 from app.database import get_db
+from app.integrations.run_report import report_run
 from app.models.schemas import RunCreate, RunOut, RunResultOut, RunResultUpdate
 from app.utils.exceptions import NotFoundException, ForbiddenException
 
@@ -531,6 +532,8 @@ async def _recalculate_run(db, run_id: str) -> None:
     skipped = sum(1 for r in rows if r["status"] == "skipped")
     pending = sum(1 for r in rows if r["status"] == "pending")
 
+    cursor = await db.execute("SELECT status FROM runs WHERE id = ?", (run_id,))
+    prev = await cursor.fetchone()
     now = datetime.now(_SHANGHAI_TZ).isoformat()
     if pending == 0:
         # 全部完成：有失败则 failed，全 skipped 则 skipped，否则 passed
@@ -544,6 +547,9 @@ async def _recalculate_run(db, run_id: str) -> None:
             "UPDATE runs SET status = ?, passed = ?, failed = ?, skipped = ?, finished_at = ? WHERE id = ?",
             (run_status, passed, failed, skipped, now, run_id),
         )
+        if prev and prev["status"] == "running":
+            # 执行刚结束（含单条重试结束）才写需求评论；已结束后的人工改判不重复写
+            asyncio.create_task(report_run(run_id))
     else:
         await db.execute(
             "UPDATE runs SET passed = ?, failed = ?, skipped = ? WHERE id = ?",

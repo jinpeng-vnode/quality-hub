@@ -19,6 +19,7 @@ export interface Feature {
   title: string
   description: string | null
   source: string | null
+  pmItemKey: string | null
   status: FeatureStatus
   caseCount: number
   createdAt: string

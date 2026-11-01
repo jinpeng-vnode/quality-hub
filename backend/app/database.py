@@ -37,6 +37,7 @@ async def init_db() -> None:
                 title TEXT NOT NULL,
                 description TEXT DEFAULT '',
                 source TEXT DEFAULT NULL,
+                pm_item_key TEXT DEFAULT NULL,
                 status TEXT NOT NULL DEFAULT 'pending',
                 created_at TEXT NOT NULL DEFAULT (datetime('now', '+8 hours')),
                 FOREIGN KEY (project_id) REFERENCES projects(id)
@@ -91,6 +92,7 @@ async def init_db() -> None:
             "ALTER TABLE runs ADD COLUMN skipped INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE run_results ADD COLUMN log TEXT DEFAULT ''",
             "ALTER TABLE run_results ADD COLUMN screenshots TEXT DEFAULT '[]'",
+            "ALTER TABLE features ADD COLUMN pm_item_key TEXT DEFAULT NULL",
         ]
         for sql in migrations:
             try:
